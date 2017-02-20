@@ -1,5 +1,5 @@
-# uploadr.net
-Flickr Uploadr.Net - Commandline and GUI for batch-uploading to Flickr
+# Uploadr.Net
+Flickr Uploadr.Net - Commandline for batch-uploading to Flickr
 
 The GUI is currently not implemented. I found the commandline tool to be very flexible, making the GUI obsolete (use the flickr uploader, if you need interactive uploading).
 
@@ -23,6 +23,7 @@ This will do the following:
 * add the media file to the album (`--album` argument) with the same name as the first foldername below the root folder (`{relrootfolder}' expression), creating the album, if it doesn't exist (`--createAlbums` argument)
 * set the visibility to `family` only (`--family` argument, versus `--public` or `--friends`)
 * make the media file `hidden` in flickr search (`--search` argument)
+* use the key (`auth.key`) generated in the `--authenticate` step (`--key` argument)
 
 There are a couple of expansion-expressions, which can be used for `tags`, `title`, or the `description`
 (Examples assume `--source c:\Images` was supplied and the file's path was `c:\Images\Family\2014\Summer Vacation\image01.jpg`)
