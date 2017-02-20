@@ -9,7 +9,7 @@ First, get an authentication-token from Flickr, which the commandline can use to
 
     UploadrNet --authenticate --key auth.key
     
-This will start your browser and ask you to logon with your yahoo-account and then wether you want to grant Uploadr.Net WRITE access to your account. If you choose so, the Flickr will show you a CODE in form xxx-xxx-xxx, which you must enter at the prompt. Uploadr.Net will verify your input with the Flickr API and upon success will write the authentication token to the file specified (auth.key in this case).
+This will start your browser and ask you to logon with your yahoo-account and then wether you want to grant Uploadr.Net WRITE access to your account. If you choose so, the Flickr will show you a CODE in form `xxx-xxx-xxx`, which you must enter at the prompt. Uploadr.Net will verify your input with the Flickr API and upon success will write the authentication token to the file specified (auth.key in this case).
 
 Now you're ready to upload to your account:
 
@@ -19,8 +19,8 @@ This will do the following:
 * scan all folders within `--source` for any supported image and video formats
 * set the filename as the title (because we don't specify otherwise)
 * set the relative path (everything after the `source` path) (`{relpath}` expression) as the description (`--desc` argument)
-* split the relative path into a comma-separated list (`{relpathastags}' expression) and add the folder names as individual tags (`--tags` argument)
-* add the media file to the album (`--album` argument) with the same name as the first foldername below the root folder (`{relrootfolder}' expression), creating the album, if it doesn't exist (`--createAlbums` argument)
+* split the relative path into a comma-separated list (`{relpathastags}` expression) and add the folder names as individual tags (`--tags` argument)
+* add the media file to the album (`--album` argument) with the same name as the first foldername below the root folder (`{relrootfolder}` expression), creating the album, if it doesn't exist (`--createAlbums` argument)
 * set the visibility to `family` only (`--family` argument, versus `--public` or `--friends`)
 * make the media file `hidden` in flickr search (`--search` argument)
 * use the key (`auth.key`) generated in the `--authenticate` step (`--key` argument)
