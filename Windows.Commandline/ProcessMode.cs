@@ -19,14 +19,17 @@ namespace uTILLIty.UploadrNet.Windows
 			Description = "The source directory to scan (will also scan all subdirectories below it")]
 		public DirectoryInfo RootDirectory { get; set; }
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
 			Description = "The file-types to process")]
-		public string[] FileTypes { get; set; }
+		public string[] FileTypes { get; set; } = {
+			"jpg", "jpeg", "png", "gif", "mp4", "avi", "wmv", "mov", "mpeg", "m2ts",
+			"3gp", "ogg", "ogv"
+		};
 
 		[FileArgument('k', "key", Optional = false, FileMustExist = true)]
 		public FileInfo KeyFile { get; set; }
 
-		[ValueArgument(typeof(string), 'a', "album", AllowMultiple = true)]
+		[ValueArgument(typeof (string), 'a', "album", AllowMultiple = true)]
 		public string[] AddToSets { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "createAlbums", false)]
@@ -38,13 +41,13 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument(Argument.UnsetShortNameChar, "updatedups", false)]
 		public bool UpdateSetsOfDuplicates { get; set; }
 
-		[ValueArgument(typeof(ContentType), Argument.UnsetShortNameChar, "ctype")]
+		[ValueArgument(typeof (ContentType), Argument.UnsetShortNameChar, "ctype")]
 		public ContentType ContentType { get; set; }
 
-		[ValueArgument(typeof(byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte)10)]
+		[ValueArgument(typeof (byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte) 10)]
 		public byte MaxConcurrentOperations { get; set; } = 10;
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "desc")]
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "desc")]
 		public string Description { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "family", false)]
@@ -56,22 +59,31 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument(Argument.UnsetShortNameChar, "public", false)]
 		public bool IsPublic { get; set; }
 
-		[ValueArgument(typeof(SafetyLevel), Argument.UnsetShortNameChar, "safety")]
+		[ValueArgument(typeof (SafetyLevel), Argument.UnsetShortNameChar, "safety")]
 		public SafetyLevel SafetyLevel { get; set; }
 
-		[ValueArgument(typeof(HiddenFromSearch), Argument.UnsetShortNameChar, "search")]
+		[ValueArgument(typeof (HiddenFromSearch), Argument.UnsetShortNameChar, "search")]
 		public HiddenFromSearch SearchState { get; set; }
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "tags")]
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "tags")]
 		public string Tags { get; set; }
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "title")]
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "title")]
 		public string Title { get; set; }
 
 		public void Execute()
 		{
 			if (!ModeChosen)
 				throw new InvalidOperationException("Invalid mode");
+
+			if (!FileTypes?.Any() ?? false)
+			{
+				FileTypes = new[]
+				{
+					"jpg", "jpeg", "png", "gif", "mp4", "avi", "wmv", "mov", "mpeg", "m2ts",
+					"3gp", "ogg", "ogv"
+				};
+			}
 
 			var mgr = new FlickrManager();
 			AccessToken token = null;
@@ -173,7 +185,7 @@ namespace uTILLIty.UploadrNet.Windows
 					var ext = f.Extension.ToLowerInvariant().Substring(1); //remove .
 					if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
 					{
-						var item = new PhotoModel { LocalPath = f.FullName };
+						var item = new PhotoModel {LocalPath = f.FullName};
 						list.Add(item);
 						added++;
 					}
