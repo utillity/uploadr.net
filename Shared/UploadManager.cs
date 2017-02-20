@@ -215,6 +215,9 @@ namespace uTILLIty.UploadrNet.Windows
 			var f = _mgr.Surrogate;
 			f.PhotosSetMeta(item.PhotoId, item.Title, item.Description);
 			f.PhotosSetTags(item.PhotoId, item.Tags);
+			f.PhotosSetPerms(item.PhotoId, item.IsPublic, item.IsFriend, item.IsFamily, PermissionComment.Everybody,
+				PermissionAddMeta.Owner);
+			f.PhotosSetSafetyLevel(item.PhotoId, item.SafetyLevel, item.SearchState);
 		}
 
 		public static DateTime GetDateTakenFromImage(string path)

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,6 +8,9 @@ using System.Threading;
 using CommandLineParser.Arguments;
 using FlickrNet;
 using uTILLIty.UploadrNet.Windows.Models;
+
+// ReSharper disable UnusedAutoPropertyAccessor.Global
+// ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
 
 namespace uTILLIty.UploadrNet.Windows
 {
@@ -89,7 +93,7 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 
 			var mgr = new FlickrManager();
-			AccessToken token = null;
+			AccessToken token;
 			try
 			{
 				using (var stream = KeyFile.OpenRead())
@@ -121,7 +125,7 @@ namespace uTILLIty.UploadrNet.Windows
 			var list = new List<PhotoModel>(1000);
 			//var di = new DirectoryInfo(cmdLine.RootDirectory);
 			var di = RootDirectory;
-			FillPhotosFromPath(di, list, di.Parent.FullName.Length + 1);
+			FillPhotosFromPath(di, list, (di.Parent?.FullName.Length ?? -1) + 1);
 			SetFromCommandline(mgr, list);
 			Console.WriteLine($"Starting to process {list.Count} files...");
 			//Console.ReadLine();
@@ -133,31 +137,16 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			var f = mgr.Surrogate;
 			var sets = f.PhotosetsGetList(mgr.AccountDetails.UserId);
-			var setsToAdd = new List<PhotosetModel>();
-			foreach (var setName in AddToSets)
+			var knownSets = new Hashtable(50);
+			foreach (var s in sets.Select(s => new PhotosetModel(s.PhotosetId, s.Title, s.Description)))
 			{
-				var set = sets.FirstOrDefault(s => s.Title.Equals(setName, StringComparison.CurrentCultureIgnoreCase));
-				if (set == null)
-				{
-					if (AutoCreateSets)
-					{
-						setsToAdd.Add(new PhotosetModel(null, setName, null));
-					}
-					else
-					{
-						var names = string.Join("', '", sets.Select(s => s.Title));
-						throw new InvalidOperationException(
-							$"The Album named '{setName}' was not found on the server. Possible names are: '{names}'");
-					}
-				}
-				else
-				{
-					setsToAdd.Add(new PhotosetModel(set.PhotosetId, set.Title, set.Description));
-				}
+				knownSets.Add(s.Title.ToLowerInvariant(), s);
 			}
+			var tagReplace = new Dictionary<string, string> {{",", " "}, {"  ", " "}};
+
 			foreach (var item in list)
 			{
-				item.Tags = Expand(Tags, item);
+				item.Tags = "\"" + string.Join("\",\"", Expand(Tags, item, tagReplace).Split(',')) + "\"";
 				item.Title = Expand(Title, item) ?? item.Filename;
 				item.ContentType = ContentType;
 				item.Description = Expand(Description, item);
@@ -166,43 +155,86 @@ namespace uTILLIty.UploadrNet.Windows
 				item.IsFamily = IsFamily;
 				item.IsFriend = IsFriend;
 				item.IsPublic = IsPublic;
-				foreach (var s in setsToAdd)
-					item.Sets.Add(s);
+
+				foreach (var setNameExpression in AddToSets)
+				{
+					var setName = Expand(setNameExpression, item);
+					var key = setName.ToLowerInvariant();
+					var set = knownSets.ContainsKey(key) ? (PhotosetModel) knownSets[key] : null;
+					if (set == null)
+					{
+						if (AutoCreateSets)
+						{
+							set = new PhotosetModel(null, setName, null);
+							knownSets.Add(key, set);
+						}
+						else
+						{
+							var names = string.Join("', '", sets.Select(s => s.Title));
+							throw new InvalidOperationException(
+								$"The Album named '{setName}' was not found on the server. Possible names are: '{names}'");
+						}
+					}
+					item.Sets.Add(set);
+				}
 			}
 		}
 
-		private string Expand(string expression, PhotoModel item)
+		private string Expand(string expression, PhotoModel item, Dictionary<string, string> inlineReplace = null)
 		{
 			if (string.IsNullOrEmpty(expression))
 				return null;
 
 			var expanded = ExpressionRegex.Replace(expression, m =>
 			{
+				string output;
 				switch (m.Groups["name"].Value.ToLowerInvariant())
 				{
 					case "now":
-						return DateTime.Now.ToString("R");
+						output = DateTime.Now.ToString("R");
+						break;
 					case "folder":
-						return new FileInfo(item.LocalPath).Directory.Name;
+						output = new FileInfo(item.LocalPath).Directory?.Name;
+						break;
 					case "path":
-						return Path.GetDirectoryName(item.LocalPath);
+						output = Path.GetDirectoryName(item.LocalPath);
+						break;
+					case "relrootfolder":
+					{
+						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
+						output = path.Length == RootDirectory.FullName.Length
+							? string.Empty
+							: path.Substring(RootDirectory.FullName.Length + 1).Split(Path.PathSeparator)[0];
+						break;
+					}
 					case "relpath":
 					{
-						var path = Path.GetDirectoryName(item.LocalPath);
-						return path.Length == RootDirectory.FullName.Length
+						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
+						output = path.Length == RootDirectory.FullName.Length
 							? string.Empty
 							: path.Substring(RootDirectory.FullName.Length + 1);
+						break;
 					}
 					case "relpathastags":
 					{
-						var path = Path.GetDirectoryName(item.LocalPath);
-						return path.Length == RootDirectory.FullName.Length
+						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
+						output = path.Length == RootDirectory.FullName.Length
 							? string.Empty
-							: path.Substring(RootDirectory.FullName.Length + 1).Replace('\\', ',');
+							: path.Substring(RootDirectory.FullName.Length + 1).Replace(Path.PathSeparator, ',');
+						break;
 					}
 					default:
-						return m.Groups["exp"].Value;
+						output = m.Groups["exp"].Value;
+						break;
 				}
+				if (!string.IsNullOrEmpty(output) && inlineReplace != null)
+				{
+					foreach (var i in inlineReplace)
+					{
+						output = output.Replace(i.Key, i.Value);
+					}
+				}
+				return output;
 			});
 			return expanded;
 		}
@@ -219,8 +251,6 @@ namespace uTILLIty.UploadrNet.Windows
 				var added = 0;
 				foreach (var f in files)
 				{
-					//if (list.Count > 100)
-					//	break;
 					var ext = f.Extension.ToLowerInvariant().Substring(1); //remove .
 					if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
 					{
@@ -229,6 +259,7 @@ namespace uTILLIty.UploadrNet.Windows
 						added++;
 					}
 				}
+				Console.WriteLine($"{added} files queued");
 				var dirs = di.GetDirectories();
 				foreach (var dir in dirs)
 				{
