@@ -1,0 +1,76 @@
+﻿<Window x:Class="uTILLIty.UploadrNet.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:uTILLIty.UploadrNet.Windows"
+        xmlns:models="clr-namespace:uTILLIty.UploadrNet.Windows.Models;assembly=uTILLIty.UploadrNet.Windows.Shared"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance IsDesignTimeCreatable=True, Type={x:Type local:MainWindowViewModel}}"
+        WindowStartupLocation="CenterScreen"
+        Title="Flickr Uploadr.NET" Height="600" Width="1024">
+	<Window.Resources>
+		<DataTemplate DataType="{x:Type models:PhotoModel}">
+			<Grid Margin="5,5,0,0">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="150" />
+					<RowDefinition Height="Auto" />
+				</Grid.RowDefinitions>
+				<Border BorderThickness="1" BorderBrush="Black" SnapsToDevicePixels="true">
+					<Image Source="{Binding LocalPath, Converter={x:Static local:WindowsThumbnailConverter.Instance}}"
+					       Stretch="Uniform" />
+				</Border>
+				<Label HorizontalAlignment="Center" Grid.Row="1" Content="{Binding Filename}" ToolTip="{Binding LocalPath}" />
+			</Grid>
+		</DataTemplate>
+	</Window.Resources>
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+		</Grid.RowDefinitions>
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="Auto" />
+			<ColumnDefinition Width="*" />
+		</Grid.ColumnDefinitions>
+		<TreeView ItemsSource="{Binding PhotosetsTree.Items}" Grid.Row="1" Padding="10,5" MinWidth="250">
+			<TreeView.Resources>
+				<HierarchicalDataTemplate DataType="{x:Type models:PhotosetCollectionModel}" ItemsSource="{Binding Items}">
+					<TextBlock Text="{Binding Title}" />
+				</HierarchicalDataTemplate>
+				<DataTemplate DataType="{x:Type models:PhotosetModel}">
+					<Grid>
+						<Grid.Resources>
+							<Style TargetType="{x:Type TextBlock}">
+								<Setter Property="Margin" Value="5,2" />
+							</Style>
+						</Grid.Resources>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="Auto" />
+							<ColumnDefinition Width="Auto" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Text="{Binding Title}" />
+						<TextBlock Text="{Binding PhotosCount}" Grid.Column="1" />
+						<TextBlock Text="{Binding VideosCount}" Grid.Column="2" />
+					</Grid>
+				</DataTemplate>
+			</TreeView.Resources>
+		</TreeView>
+		<ItemsControl Grid.Column="1" Grid.Row="1" ItemsSource="{Binding Photos}"
+		              VirtualizingStackPanel.IsVirtualizing="true" VirtualizingStackPanel.VirtualizationMode="Standard">
+			<ItemsControl.Template>
+				<ControlTemplate TargetType="{x:Type ItemsControl}">
+					<ScrollViewer CanContentScroll="true">
+						<ItemsPresenter />
+					</ScrollViewer>
+				</ControlTemplate>
+			</ItemsControl.Template>
+			<ItemsControl.ItemsPanel>
+				<ItemsPanelTemplate>
+					<WrapPanel Orientation="Horizontal" IsItemsHost="True" />
+				</ItemsPanelTemplate>
+			</ItemsControl.ItemsPanel>
+		</ItemsControl>
+	</Grid>
+</Window>
