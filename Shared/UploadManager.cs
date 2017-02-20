@@ -51,7 +51,7 @@ namespace uTILLIty.UploadrNet.Windows
 			set { SetValue(value); }
 		}
 
-		public bool UpdateSetsOfDuplicates
+		public bool UpdateDuplicates
 		{
 			get { return GetValue(true); }
 			set { SetValue(value); }
@@ -86,17 +86,32 @@ namespace uTILLIty.UploadrNet.Windows
 					var result = Parallel.ForEach(items, new ParallelOptions {MaxDegreeOfParallelism = MaxConcurrentOperations},
 						item =>
 						{
-							if (!token.IsCancellationRequested && ShouldProcess(item))
-								CheckIsDuplicate(item);
-
-							if (!CheckOnly)
+							try
 							{
-								if (item.State == PhotoProcessingStateType.ReadyToUpload)
-									Upload(item);
-								if (item.State == PhotoProcessingStateType.Uploaded)
-									AddToSets(item);
-								if (item.State == PhotoProcessingStateType.Duplicate && UpdateSetsOfDuplicates)
-									AddToSets(item);
+								if (!token.IsCancellationRequested && ShouldProcess(item))
+									CheckIsDuplicate(item);
+
+								if (!CheckOnly)
+								{
+									if (item.State == PhotoProcessingStateType.ReadyToUpload)
+										Upload(item);
+									if (item.State == PhotoProcessingStateType.Uploaded)
+									{
+										AddToSets(item);
+										item.State = PhotoProcessingStateType.Success;
+									}
+									if (item.State == PhotoProcessingStateType.Duplicate && UpdateDuplicates)
+									{
+										LogAction?.Invoke($"Updating existing file {item.Filename} on Flickr");
+										UpdateItem(item);
+										AddToSets(item);
+										item.State = PhotoProcessingStateType.Success;
+									}
+								}
+							}
+							catch (Exception ex)
+							{
+								item.AddError(ex.Message, ex);
 							}
 						});
 					await Task.Run(() =>
@@ -148,7 +163,10 @@ namespace uTILLIty.UploadrNet.Windows
 				case PhotoProcessingStateType.Pending:
 					return true;
 				case PhotoProcessingStateType.Retry:
-					return item.RetryCount <= 3;
+					if (item.RetryCount <= 3)
+						return true;
+					item.State = PhotoProcessingStateType.Failed;
+					return false;
 			}
 			return false;
 		}
@@ -182,11 +200,21 @@ namespace uTILLIty.UploadrNet.Windows
 				return;
 			}
 			var localDateTaken = GetDateTakenFromImage(item.LocalPath);
-			item.State = dups.Any(d => !d.DateTakenUnknown && d.DateTaken.Subtract(localDateTaken).TotalSeconds < 1)
+			var dupItem = dups.FirstOrDefault(d => !d.DateTakenUnknown && d.DateTaken.Subtract(localDateTaken).TotalSeconds < 1);
+			item.State = dupItem != null
 				? PhotoProcessingStateType.Duplicate
 				: PhotoProcessingStateType.ReadyToUpload;
 			if (item.State == PhotoProcessingStateType.Duplicate)
-				LogAction?.Invoke($"{item.Filename} is a duplicate!");
+			{
+				item.PhotoId = dupItem?.PhotoId;
+			}
+		}
+
+		private void UpdateItem(PhotoModel item)
+		{
+			var f = _mgr.Surrogate;
+			f.PhotosSetMeta(item.PhotoId, item.Title, item.Description);
+			f.PhotosSetTags(item.PhotoId, item.Tags);
 		}
 
 		public static DateTime GetDateTakenFromImage(string path)

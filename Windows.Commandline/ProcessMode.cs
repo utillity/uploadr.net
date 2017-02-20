@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using CommandLineParser.Arguments;
 using FlickrNet;
@@ -11,6 +12,8 @@ namespace uTILLIty.UploadrNet.Windows
 {
 	internal class ProcessMode
 	{
+		private static readonly Regex ExpressionRegex = new Regex(@"(?in)(?<exp>\{(?<name>[^}]+)\})");
+
 		[SwitchArgument(Argument.UnsetShortNameChar, "process", false, Optional = false,
 			Description = "Executes Process Mode, which uploads local files to Flickr")]
 		public bool ModeChosen { get; set; }
@@ -39,7 +42,7 @@ namespace uTILLIty.UploadrNet.Windows
 		public bool CheckOnly { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "updatedups", false)]
-		public bool UpdateSetsOfDuplicates { get; set; }
+		public bool UpdateDuplicates { get; set; }
 
 		[ValueArgument(typeof (ContentType), Argument.UnsetShortNameChar, "ctype")]
 		public ContentType ContentType { get; set; }
@@ -111,7 +114,7 @@ namespace uTILLIty.UploadrNet.Windows
 			var uploadMgr = new UploadManager(ct, mgr)
 			{
 				MaxConcurrentOperations = MaxConcurrentOperations,
-				UpdateSetsOfDuplicates = UpdateSetsOfDuplicates,
+				UpdateDuplicates = UpdateDuplicates,
 				CheckOnly = CheckOnly,
 				LogAction = Console.WriteLine
 			};
@@ -120,7 +123,7 @@ namespace uTILLIty.UploadrNet.Windows
 			var di = RootDirectory;
 			FillPhotosFromPath(di, list, di.Parent.FullName.Length + 1);
 			SetFromCommandline(mgr, list);
-			Console.WriteLine($"Ready to process {list.Count} photos.");
+			Console.WriteLine($"Starting to process {list.Count} files...");
 			//Console.ReadLine();
 			uploadMgr.AddRange(list);
 			uploadMgr.ProcessAsync().Wait(ct);
@@ -154,10 +157,10 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 			foreach (var item in list)
 			{
-				item.Tags = Tags;
-				item.Title = Title ?? item.Filename;
+				item.Tags = Expand(Tags, item);
+				item.Title = Expand(Title, item) ?? item.Filename;
 				item.ContentType = ContentType;
-				item.Description = Description;
+				item.Description = Expand(Description, item);
 				item.SafetyLevel = SafetyLevel;
 				item.SearchState = SearchState;
 				item.IsFamily = IsFamily;
@@ -166,6 +169,42 @@ namespace uTILLIty.UploadrNet.Windows
 				foreach (var s in setsToAdd)
 					item.Sets.Add(s);
 			}
+		}
+
+		private string Expand(string expression, PhotoModel item)
+		{
+			if (string.IsNullOrEmpty(expression))
+				return null;
+
+			var expanded = ExpressionRegex.Replace(expression, m =>
+			{
+				switch (m.Groups["name"].Value.ToLowerInvariant())
+				{
+					case "now":
+						return DateTime.Now.ToString("R");
+					case "folder":
+						return new FileInfo(item.LocalPath).Directory.Name;
+					case "path":
+						return Path.GetDirectoryName(item.LocalPath);
+					case "relpath":
+					{
+						var path = Path.GetDirectoryName(item.LocalPath);
+						return path.Length == RootDirectory.FullName.Length
+							? string.Empty
+							: path.Substring(RootDirectory.FullName.Length + 1);
+					}
+					case "relpathastags":
+					{
+						var path = Path.GetDirectoryName(item.LocalPath);
+						return path.Length == RootDirectory.FullName.Length
+							? string.Empty
+							: path.Substring(RootDirectory.FullName.Length + 1).Replace('\\', ',');
+					}
+					default:
+						return m.Groups["exp"].Value;
+				}
+			});
+			return expanded;
 		}
 
 		private void FillPhotosFromPath(DirectoryInfo di, List<PhotoModel> list, int prefixLen)
@@ -190,7 +229,6 @@ namespace uTILLIty.UploadrNet.Windows
 						added++;
 					}
 				}
-				Console.WriteLine($"added {added} images");
 				var dirs = di.GetDirectories();
 				foreach (var dir in dirs)
 				{
