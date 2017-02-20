@@ -30,9 +30,9 @@ There are a couple of expansion-expressions, which can be used for `tags`, `titl
 
 Expression | Description
 --- | ---
-`now` | the current date/time in ISO format
-`folder` | the immediate folder name of the media file (ie `Summer Vacation`)
-`path` | the complete path (without filename) of the media file (ie. c:\Images\Family\2014\Summer Vacation`)
-`relrootfolder` | the first folder  relative from the `root` folder specified (ie. `Family`)
-`relpath` | the path relative from the `root` folder specified (ie. `Family\2014\Summer Vacation`)
-`relpathastags` | the path relative from the `root` folder specified, in `tag` notation (ie. `Family,2014,Summer Vacation`)
+`{now}` | the current date/time in ISO format
+`{folder}` | the immediate folder name of the media file (ie `Summer Vacation`)
+`{path}` | the complete path (without filename) of the media file (ie. `c:\Images\Family\2014\Summer Vacation`)
+`{relrootfolder}` | the first folder  relative from the `root` folder specified (ie. `Family`)
+`{relpath}` | the path relative from the `root` folder specified (ie. `Family\2014\Summer Vacation`)
+`{relpathastags}` | the path relative from the `root` folder specified, in `tag` notation (ie. `Family,2014,Summer Vacation`)
