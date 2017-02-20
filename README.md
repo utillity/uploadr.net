@@ -13,13 +13,13 @@ This will start your browser and ask you to logon with your yahoo-account and th
 
 Now you're ready to upload to your account:
 
-    UploadrNet --process --source "c:\Path\To\My\Photo\Library" --desc "{relpath}" --tags "{relpathastags}" --updatedups --key auth.key --album {relrootfolder} --createAlbums --family --search Hidden 
+    UploadrNet --process --source "c:\Path\To\My\Photo\Library" --desc "{relpath}" --tags "{relpathastags},another tag" --updatedups --key auth.key --album {relrootfolder} --createAlbums --family --search Hidden 
     
 This will do the following:
 * scan all folders within `--source` for any supported image and video formats
 * set the filename as the title (because we don't specify otherwise)
 * set the relative path (everything after the `source` path) (`{relpath}` expression) as the description (`--desc` argument)
-* split the relative path into a comma-separated list (`{relpathastags}` expression) and add the folder names as individual tags (`--tags` argument)
+* split the relative path into a comma-separated list (`{relpathastags}` expression) and add the folder names as individual tags (`--tags` argument), and also add a static tag `another tag` (tags are separated by comma, so they are replaced with a space in directory names)
 * add the media file to the album (`--album` argument) with the same name as the first foldername below the root folder (`{relrootfolder}` expression), creating the album, if it doesn't exist (`--createAlbums` argument)
 * set the visibility to `family` only (`--family` argument, versus `--public` or `--friends`)
 * make the media file `hidden` in flickr search (`--search` argument)
