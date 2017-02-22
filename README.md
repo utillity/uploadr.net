@@ -31,6 +31,8 @@ There are a couple of expansion-expressions, which can be used for `tags`, `titl
 Expression | Description
 --- | ---
 `{now}` | the current date/time in ISO format
+`{fname}` | the filename of the media file (ie `image01`)
+`{fnameandext}` | the filename with extension of the media file (ie `image01.jpg`)
 `{folder}` | the immediate folder name of the media file (ie `Summer Vacation`)
 `{path}` | the complete path (without filename) of the media file (ie. `c:\Images\Family\2014\Summer Vacation`)
 `{relrootfolder}` | the first folder  relative from the `root` folder specified (ie. `Family`)
