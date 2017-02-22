@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Windows.Commandline", "Wind
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "Shared\Shared.csproj", "{95D96576-A46A-4F61-B147-8B6302F556DD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTests", "UnitTests\UnitTests.csproj", "{263ED04B-B3D0-4128-807A-A3701653D611}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{95D96576-A46A-4F61-B147-8B6302F556DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{95D96576-A46A-4F61-B147-8B6302F556DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{95D96576-A46A-4F61-B147-8B6302F556DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{263ED04B-B3D0-4128-807A-A3701653D611}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{263ED04B-B3D0-4128-807A-A3701653D611}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{263ED04B-B3D0-4128-807A-A3701653D611}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{263ED04B-B3D0-4128-807A-A3701653D611}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -50,9 +50,10 @@
     <Compile Include="FlickrAccountDetails.cs" />
     <Compile Include="FlickrManager.cs" />
     <Compile Include="Models\PhotoModel.cs" />
-    <Compile Include="Models\PhotoProcessingStateType.cs" />
+    <Compile Include="Models\ProcessingStateType.cs" />
     <Compile Include="Models\PhotosetCollectionModel.cs" />
     <Compile Include="Models\PhotosetModel.cs" />
+    <Compile Include="Models\ProcessingItem.cs" />
     <Compile Include="NotifyPropertyChangedBase.cs" />
     <Compile Include="ObjectExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

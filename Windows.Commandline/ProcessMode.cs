@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,36 +13,41 @@ using uTILLIty.UploadrNet.Windows.Models;
 
 namespace uTILLIty.UploadrNet.Windows
 {
-	internal class ProcessMode
+	internal class ProcessMode : ModeBase
 	{
 		private static readonly Regex ExpressionRegex = new Regex(@"(?in)(?<exp>\{(?<name>[^}]+)\})");
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "process", false, Optional = false,
 			Description = "Executes Process Mode, which uploads local files to Flickr")]
-		public bool ModeChosen { get; set; }
+		public override bool ModeChosen { get; set; }
 
 		[DirectoryArgument('s', "source", Optional = false, DirectoryMustExist = true,
 			Description = "The source directory to scan (will also scan all subdirectories below it")]
 		public DirectoryInfo RootDirectory { get; set; }
 
 		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
-			Description = "The file-types to process")]
-		public string[] FileTypes { get; set; } = {
-			"jpg", "jpeg", "png", "gif", "mp4", "avi", "wmv", "mov", "mpeg", "m2ts",
-			"3gp", "ogg", "ogv"
-		};
+			Description = "The file-types to process. Use 'videos' and 'photos', or individual extension (ie 'png jpg jpeg')")]
+		public string[] FileTypes { get; set; }
 
 		[FileArgument('k', "key", Optional = false, FileMustExist = true)]
-		public FileInfo KeyFile { get; set; }
+		public override FileInfo KeyFile { get; set; }
 
-		[ValueArgument(typeof (string), 'a', "album", AllowMultiple = true)]
+		[ValueArgument(typeof (string), 'a', "album", AllowMultiple = true,
+			Description = "Use either the album-name, or ID:<albumId>. AlbumID can be retrieved using LIST mode.")]
 		public string[] AddToSets { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "createAlbums", false)]
 		public bool AutoCreateSets { get; set; }
 
+		[SwitchArgument(Argument.UnsetShortNameChar, "updateonly", false,
+			Description = "Only process existing flickr objects, don't upload new media files")]
+		public bool UpdateOnly { get; set; }
+
 		[SwitchArgument(Argument.UnsetShortNameChar, "checkonly", false)]
 		public bool CheckOnly { get; set; }
+
+		[SwitchArgument(Argument.UnsetShortNameChar, "checkfordups", false)]
+		public bool CheckForDuplicates { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "updatedups", false)]
 		public bool UpdateDuplicates { get; set; }
@@ -75,44 +79,37 @@ namespace uTILLIty.UploadrNet.Windows
 		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "tags")]
 		public string Tags { get; set; }
 
-		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "title")]
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "title",
+			DefaultValue = "{fname}")]
 		public string Title { get; set; }
 
-		public void Execute()
+		public override void Execute()
 		{
 			if (!ModeChosen)
 				throw new InvalidOperationException("Invalid mode");
 
-			if (!FileTypes?.Any() ?? false)
+			if (FileTypes == null || !FileTypes.Any())
 			{
-				FileTypes = new[]
-				{
-					"jpg", "jpeg", "png", "gif", "mp4", "avi", "wmv", "mov", "mpeg", "m2ts",
-					"3gp", "ogg", "ogv"
-				};
+				FileTypes = UploadManager.PhotoFormats
+					.Concat(UploadManager.VideoFormats)
+					.ToArray();
+			}
+			if (FileTypes.Any(t => t.ToLowerInvariant() == "photos"))
+			{
+				FileTypes = FileTypes
+					.Where(t => t.ToLowerInvariant() != "photos")
+					.Concat(UploadManager.PhotoFormats)
+					.ToArray();
+			}
+			if (FileTypes.Any(t => t.ToLowerInvariant() == "videos"))
+			{
+				FileTypes = FileTypes
+					.Where(t => t.ToLowerInvariant() != "videos")
+					.Concat(UploadManager.VideoFormats)
+					.ToArray();
 			}
 
-			var mgr = new FlickrManager();
-			AccessToken token;
-			try
-			{
-				using (var stream = KeyFile.OpenRead())
-				{
-					token = stream.Load<AccessToken>();
-				}
-			}
-			catch (Exception ex)
-			{
-				throw new InvalidOperationException($"Error loading token '{KeyFile.FullName}'. {ex.Message}");
-			}
-			try
-			{
-				mgr.ApplyToken(token);
-			}
-			catch (Exception ex)
-			{
-				throw new InvalidOperationException($"Supplied token is invalid. {ex.Message}");
-			}
+			var mgr = LoadToken();
 
 			var ct = new CancellationToken();
 			var uploadMgr = new UploadManager(ct, mgr)
@@ -120,6 +117,7 @@ namespace uTILLIty.UploadrNet.Windows
 				MaxConcurrentOperations = MaxConcurrentOperations,
 				UpdateDuplicates = UpdateDuplicates,
 				CheckOnly = CheckOnly,
+				CheckForDuplicates = CheckForDuplicates,
 				LogAction = Console.WriteLine
 			};
 			var list = new List<PhotoModel>(1000);
@@ -137,17 +135,17 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			var f = mgr.Surrogate;
 			var sets = f.PhotosetsGetList(mgr.AccountDetails.UserId);
-			var knownSets = new Hashtable(50);
+			var knownSets = new List<PhotosetModel>(50);
 			foreach (var s in sets.Select(s => new PhotosetModel(s.PhotosetId, s.Title, s.Description)))
 			{
-				knownSets.Add(s.Title.ToLowerInvariant(), s);
+				knownSets.Add(s);
 			}
 			var tagReplace = new Dictionary<string, string> {{",", " "}, {"  ", " "}};
 
 			foreach (var item in list)
 			{
-				item.Tags = "\"" + string.Join("\",\"", Expand(Tags, item, tagReplace).Split(',')) + "\"";
-				item.Title = Expand(Title, item) ?? item.Filename;
+				item.Tags = Expand(Tags, item)?.Split(',');
+				item.Title = Expand(Title, item);
 				item.ContentType = ContentType;
 				item.Description = Expand(Description, item);
 				item.SafetyLevel = SafetyLevel;
@@ -160,27 +158,52 @@ namespace uTILLIty.UploadrNet.Windows
 				{
 					var setName = Expand(setNameExpression, item);
 					var key = setName.ToLowerInvariant();
-					var set = knownSets.ContainsKey(key) ? (PhotosetModel) knownSets[key] : null;
-					if (set == null)
+					var keyIsId = key.StartsWith("id:");
+					if (keyIsId)
 					{
+						key = key.Substring(3);
+					}
+					PhotosetModel set;
+					var candidates = knownSets.Where(s =>
+						(keyIsId && s.Id.ToLowerInvariant() == key)
+						|| (!keyIsId && s.Title.ToLowerInvariant() == key))
+						.ToArray();
+					if (candidates.Length > 1)
+					{
+						var albums = string.Join(", ", sets.Select(s => $"'{s.Title}' (ID:{s.PhotosetId})"));
+						throw new InvalidOperationException(
+							$"Multiple albums with '{setName}' were found on the server. Please use the ID instead (ID:<id> syntax). Possible albums are: {albums}");
+					}
+					if (!candidates.Any())
+					{
+						if (keyIsId)
+						{
+							var albums = string.Join(", ", sets.Select(s => $"'{s.Title}' (ID:{s.PhotosetId})"));
+							throw new InvalidOperationException(
+								$"The Album with ID '{key}' was not found on the server. Possible albums are: {albums}");
+						}
 						if (AutoCreateSets)
 						{
 							set = new PhotosetModel(null, setName, null);
-							knownSets.Add(key, set);
+							knownSets.Add(set);
 						}
 						else
 						{
-							var names = string.Join("', '", sets.Select(s => s.Title));
+							var albums = string.Join(", ", sets.Select(s => $"'{s.Title}' (ID:{s.PhotosetId})"));
 							throw new InvalidOperationException(
-								$"The Album named '{setName}' was not found on the server. Possible names are: '{names}'");
+								$"The Album with ID or named '{setName}' was not found on the server. Possible albums are: {albums}");
 						}
+					}
+					else
+					{
+						set = candidates.Single();
 					}
 					item.Sets.Add(set);
 				}
 			}
 		}
 
-		private string Expand(string expression, PhotoModel item, Dictionary<string, string> inlineReplace = null)
+		internal string Expand(string expression, PhotoModel item, Dictionary<string, string> inlineReplace = null)
 		{
 			if (string.IsNullOrEmpty(expression))
 				return null;
@@ -199,12 +222,18 @@ namespace uTILLIty.UploadrNet.Windows
 					case "path":
 						output = Path.GetDirectoryName(item.LocalPath);
 						break;
+					case "fname":
+						output = Path.GetFileNameWithoutExtension(item.LocalPath);
+						break;
+					case "fnameandext":
+						output = Path.GetFileName(item.LocalPath);
+						break;
 					case "relrootfolder":
 					{
 						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
 						output = path.Length == RootDirectory.FullName.Length
 							? string.Empty
-							: path.Substring(RootDirectory.FullName.Length + 1).Split(Path.PathSeparator)[0];
+							: path.Substring(RootDirectory.FullName.Length + 1).Split(Path.DirectorySeparatorChar)[0];
 						break;
 					}
 					case "relpath":
@@ -220,7 +249,9 @@ namespace uTILLIty.UploadrNet.Windows
 						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
 						output = path.Length == RootDirectory.FullName.Length
 							? string.Empty
-							: path.Substring(RootDirectory.FullName.Length + 1).Replace(Path.PathSeparator, ',');
+							: path.Substring(RootDirectory.FullName.Length + 1)
+								.Replace(',', '_')
+								.Replace(Path.DirectorySeparatorChar, ',');
 						break;
 					}
 					default:

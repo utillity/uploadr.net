@@ -1,6 +1,6 @@
 ﻿namespace uTILLIty.UploadrNet.Windows.Models
 {
-	public enum PhotoProcessingStateType
+	public enum ProcessingStateType
 	{
 		Pending,
 		Duplicate,

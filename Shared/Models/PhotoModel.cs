@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using FlickrNet;
 
@@ -8,6 +7,8 @@ namespace uTILLIty.UploadrNet.Windows.Models
 {
 	public class PhotoModel : NotifyPropertyChangedBase
 	{
+		private PhotoInfo _remoteDetails;
+
 		public string LocalPath
 		{
 			get { return GetValue<string>(); }
@@ -18,11 +19,21 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			}
 		}
 
-		public string Filename { get; private set; }
-
-		public string Tags
+		public string Filename
 		{
 			get { return GetValue<string>(); }
+			private set { SetValue(value); }
+		}
+
+		public DateTime? DateTaken
+		{
+			get { return GetValue<DateTime?>(); }
+			set { SetValue(value); }
+		}
+
+		public string[] Tags
+		{
+			get { return GetValue<string[]>(); }
 			set { SetValue(value); }
 		}
 
@@ -56,9 +67,9 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			set { SetValue(value); }
 		}
 
-		public PhotoProcessingStateType State
+		public ProcessingStateType State
 		{
-			get { return GetValue<PhotoProcessingStateType>(); }
+			get { return GetValue<ProcessingStateType>(); }
 			set { SetValue(value); }
 		}
 
@@ -94,19 +105,9 @@ namespace uTILLIty.UploadrNet.Windows.Models
 
 		public ObservableCollection<PhotosetModel> Sets { get; } = new ObservableCollection<PhotosetModel>();
 
-		public int RetryCount
+		public PhotoInfo GetRemoteDetails(Flickr f)
 		{
-			get { return GetValue<int>(); }
-			set { SetValue(value); }
-		}
-
-
-		public void AddError(string msg, Exception ex)
-		{
-			Debug.WriteLine(ex.ToString());
-			Errors = $"{DateTime.Now:T} {msg}\r\n{Errors}";
-			State = PhotoProcessingStateType.Retry;
-			RetryCount++;
+			return _remoteDetails ?? (_remoteDetails = f.PhotosGetInfo(PhotoId));
 		}
 	}
 }

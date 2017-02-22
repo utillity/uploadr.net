@@ -10,43 +10,36 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			try
 			{
-				var parser = new CommandLineParser.CommandLineParser();
-				var processMode = new ProcessMode();
-				try
+				var modes = new ModeBase[]
 				{
-					parser.ExtractArgumentAttributes(processMode);
-					parser.ParseCommandLine(args);
-					//parser.ShowParsedArguments();
-					processMode.Execute();
-					Console.WriteLine("*** Completed ***");
-					return;
-				}
-				catch (CommandLineException ex)
+					new AuthenticateMode(), new ListMode(), new ProcessMode()
+				};
+				foreach (var mode in modes)
 				{
-					if (processMode.ModeChosen)
+					var parser = new CommandLineParser.CommandLineParser();
+					//parser.AdditionalArgumentsSettings.AcceptAdditionalArguments = false;
+					try
 					{
-						Console.WriteLine($"Processing Mode\r\n{ex.Message}\r\nPlease check the parameters supplied!");
+						parser.ExtractArgumentAttributes(mode);
+						parser.ParseCommandLine(args);
+
 						//parser.ShowParsedArguments();
-						parser.ShowUsage();
+						//Console.WriteLine("Ready to Process! Press any key to continue");
+						//Console.ReadKey();
+						//Console.WriteLine("Starting...");
+
+						mode.Execute();
+						Console.WriteLine("*** Completed ***");
+						return;
 					}
-				}
-				parser = new CommandLineParser.CommandLineParser();
-				var authenticateMode = new AuthenticateMode();
-				try
-				{
-					parser.ExtractArgumentAttributes(authenticateMode);
-					parser.ParseCommandLine(args);
-					authenticateMode.Execute();
-					Console.WriteLine("*** Completed ***");
-					return;
-				}
-				catch (CommandLineException ex)
-				{
-					if (authenticateMode.ModeChosen)
+					catch (CommandLineException ex)
 					{
-						Console.WriteLine($"Authentication Mode\r\n{ex.Message}\r\nPlease check the parameters supplied!");
-						//parser.ShowParsedArguments();
-						parser.ShowUsage();
+						if (mode.ModeChosen)
+						{
+							Console.WriteLine($"\r\n\r\n\r\n{ex.Message}\r\n\r\nPlease check the parameters supplied!");
+							parser.ShowUsage();
+							parser.ShowParsedArguments();
+						}
 					}
 				}
 			}
