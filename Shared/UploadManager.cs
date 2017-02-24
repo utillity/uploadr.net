@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -36,7 +37,7 @@ namespace uTILLIty.UploadrNet.Windows
 
 		private readonly CancellationToken _cancellationToken;
 		private readonly FlickrManager _mgr;
-		private readonly List<ProcessingItem> _processQueue = new List<ProcessingItem>();
+		private readonly List<PhotoModel> _processQueue = new List<PhotoModel>();
 
 		public UploadManager(CancellationToken cancellationToken, FlickrManager mgr)
 		{
@@ -46,7 +47,7 @@ namespace uTILLIty.UploadrNet.Windows
 
 		public int MaxConcurrentOperations
 		{
-			get { return GetValue(5); }
+			get { return GetValue(20); }
 			set { SetValue(value); }
 		}
 
@@ -90,14 +91,14 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			if (IsBusy)
 				throw new InvalidOperationException("Cannot add items to queue while Upload-Manager is processing the queue");
-			_processQueue.Add(new ProcessingItem(item));
+			_processQueue.Add(item);
 		}
 
 		public void AddRange(List<PhotoModel> list)
 		{
 			if (IsBusy)
 				throw new InvalidOperationException("Cannot add items to queue while Upload-Manager is processing the queue");
-			_processQueue.AddRange(list.Select(i => new ProcessingItem(i)));
+			_processQueue.AddRange(list);
 		}
 
 		public async Task ProcessAsync()
@@ -125,7 +126,7 @@ namespace uTILLIty.UploadrNet.Windows
 					if (!items.Any() || token.IsCancellationRequested)
 						break;
 
-					LogAction($"Processing {items.Length} items from queue...");
+					LogAction($"Processing {items.Length} items from queue (with {MaxConcurrentOperations} worker-threads)...");
 					var result = Parallel.ForEach(items,
 						new ParallelOptions {MaxDegreeOfParallelism = MaxConcurrentOperations, CancellationToken = token},
 						ProcessItem);
@@ -145,18 +146,18 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 		}
 
-		private bool ShouldProcess(ProcessingItem item)
+		private bool ShouldProcess(PhotoModel item)
 		{
-			switch (item.Item.State)
+			switch (item.State)
 			{
 				case ProcessingStateType.Retry:
 					if (item.RetryCount <= 3)
 					{
-						item.Item.State = ProcessingStateType.Pending;
+						item.State = ProcessingStateType.Pending;
 						item.AddMessage("Retrying");
 						return true;
 					}
-					item.Item.State = ProcessingStateType.Failed;
+					item.State = ProcessingStateType.Failed;
 					return false;
 				case ProcessingStateType.Success:
 				case ProcessingStateType.Failed:
@@ -171,8 +172,10 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 		}
 
-		private void ProcessItem(ProcessingItem item)
+		private void ProcessItem(PhotoModel item)
 		{
+			//Parallel.ForEach reuses the threads, and you can't change the name once set!
+			//Thread.CurrentThread.Name = $"UploadManager.ProcessItem({item.LocalPath}) background thread";
 			var token = _cancellationToken;
 			try
 			{
@@ -181,53 +184,53 @@ namespace uTILLIty.UploadrNet.Windows
 				if (!ShouldProcess(item))
 					return;
 
-				LogAction($"Processing {item.Item.Filename} ({item.Item.State})...");
+				Debug.WriteLine($"Processing {item.Filename} ({item.State})...");
 				EnsureItemProperties(item);
 
-				if (item.Item.State == ProcessingStateType.Pending)
+				if (item.State == ProcessingStateType.Pending)
 				{
 					if (CheckForDuplicates && CheckIsDuplicate(item))
-						item.Item.State = ProcessingStateType.Duplicate;
+						item.State = ProcessingStateType.Duplicate;
 					else
-						item.Item.State = ProcessingStateType.ReadyToUpload;
+						item.State = ProcessingStateType.ReadyToUpload;
 				}
 
 				if (CheckOnly)
 				{
-					item.Item.State = ProcessingStateType.Success;
+					item.State = ProcessingStateType.Success;
 					return;
 				}
 
 				if (token.IsCancellationRequested)
 					return;
 
-				if (item.Item.State == ProcessingStateType.ReadyToUpload)
+				if (item.State == ProcessingStateType.ReadyToUpload)
 				{
 					if (UpdateOnly)
-						item.Item.State = ProcessingStateType.Success;
+						item.State = ProcessingStateType.Success;
 					else
 					{
 						if (token.IsCancellationRequested)
 							return;
-						item.Item.State = ProcessingStateType.Uploading;
+						item.State = ProcessingStateType.Uploading;
 						if (Upload(item))
-							item.Item.State = ProcessingStateType.Uploaded;
+							item.State = ProcessingStateType.Uploaded;
 					}
 				}
 
-				if (item.Item.State == ProcessingStateType.Uploaded)
+				if (item.State == ProcessingStateType.Uploaded)
 				{
 					AddToSets(item);
 					FixDateTakenIfVideo(item);
-					item.Item.State = ProcessingStateType.Success;
+					item.State = ProcessingStateType.Success;
 				}
 
-				if (item.Item.State == ProcessingStateType.Duplicate && UpdateDuplicates)
+				if (item.State == ProcessingStateType.Duplicate && UpdateDuplicates)
 				{
 					UpdateItem(item);
 					AddToSets(item);
 					FixDateTakenIfVideo(item);
-					item.Item.State = ProcessingStateType.Success;
+					item.State = ProcessingStateType.Success;
 				}
 			}
 			catch (Exception ex)
@@ -236,20 +239,21 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 			finally
 			{
-				LogAction($"Completed {item.Item.Filename} ({item.Item.State})");
-				if (item.Item.State != ProcessingStateType.Success)
+				Debug.WriteLine($"Completed {item.Filename} ({item.State})");
+				if (item.State != ProcessingStateType.Success)
 				{
-					LogAction($"{item.Item.Filename} Errors:\r\n{item.Item.Errors}");
+					LogAction($"{item.Filename} completed in state {item.State}");
+					LogAction($"{item.Filename} Errors:\r\n{item.Errors}");
 				}
 			}
 		}
 
-		private void EnsureItemProperties(ProcessingItem item)
+		private void EnsureItemProperties(PhotoModel item)
 		{
-			if (!item.Item.DateTaken.HasValue)
+			if (!item.DateTaken.HasValue)
 				SetDateTaken(item);
-			if (string.IsNullOrEmpty(item.Item.Crc32))
-				CalculateCrc32(item.Item);
+			if (string.IsNullOrEmpty(item.Crc32))
+				CalculateCrc32(item);
 
 			EnsureMachineTags(item);
 		}
@@ -273,26 +277,26 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 		}
 
-		private void EnsureMachineTags(ProcessingItem item)
+		private void EnsureMachineTags(PhotoModel item)
 		{
-			var tags = new List<string>(item.Item.Tags ?? new string[0]);
+			var tags = new List<string>(item.Tags ?? new string[0]);
 			if (!tags.Any(t => t.StartsWith(FilenameMachineTag)))
-				tags.Add(BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.Item.LocalPath).ToLowerInvariant()));
+				tags.Add(BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.LocalPath).ToLowerInvariant()));
 
 			if (!tags.Any(t => t.StartsWith(ImportPathMachineTag)))
 				tags.Add(BuildMachineTagExpression(ImportPathMachineTag,
-					item.Item.LocalPath.Replace(Path.DirectorySeparatorChar, '/').ToLowerInvariant()));
+					item.LocalPath.Replace(Path.DirectorySeparatorChar, '/').ToLowerInvariant()));
 
 			if (!tags.Any(t => t.StartsWith(UploaderMachineTag)))
 				tags.Add(BuildMachineTagExpression(UploaderMachineTag, "Uploadr.Net"));
 
 			if (!tags.Any(t => t.StartsWith(CrcMachineTag)))
-				tags.Add(BuildMachineTagExpression(CrcMachineTag, item.Item.Crc32));
+				tags.Add(BuildMachineTagExpression(CrcMachineTag, item.Crc32));
 
 			//if (!tags.Any(t => "Uploadr.Net".Equals(t)))
 			//	tags.Add("Uploadr.Net");
 
-			item.Item.Tags = tags.ToArray();
+			item.Tags = tags.ToArray();
 		}
 
 		private string BuildMachineTagExpression(string tag, string value)
@@ -301,26 +305,26 @@ namespace uTILLIty.UploadrNet.Windows
 			return expr;
 		}
 
-		private void FixDateTakenIfVideo(ProcessingItem item)
+		private void FixDateTakenIfVideo(PhotoModel item)
 		{
-			if (!IsVideo(item.Item.LocalPath) || !item.Item.DateTaken.HasValue)
+			if (!IsVideo(item.LocalPath) || !item.DateTaken.HasValue)
 				return;
 
 			var f = _mgr.Surrogate;
-			var r = item.Item.GetRemoteDetails(f);
-			var dt = item.Item.DateTaken.Value;
+			var r = item.GetRemoteDetails(f);
+			var dt = item.DateTaken.Value;
 			var rdt = r.DateTakenUnknown ? DateTime.MinValue : r.DateTaken.Date.ToUniversalTime();
 			if (!dt.ToUniversalTime().Date.Equals(rdt))
 			{
-				f.PhotosSetDates(item.Item.PhotoId, dt, DateGranularity.FullDate);
-				LogAction?.Invoke($"Updated Date-Taken (to {dt:d}) for video {item.Item.Filename}");
+				f.PhotosSetDates(item.PhotoId, dt, DateGranularity.FullDate);
+				LogAction?.Invoke($"Updated Date-Taken (to {dt:d}) for video {item.Filename}");
 			}
 		}
 
-		private void SetDateTaken(ProcessingItem item)
+		private void SetDateTaken(PhotoModel item)
 		{
-			var path = item.Item.LocalPath;
-			item.Item.DateTaken = IsVideo(path) ? GetDateModified(path) : GetDateTaken(path);
+			var path = item.LocalPath;
+			item.DateTaken = IsVideo(path) ? GetDateModified(path) : GetDateTaken(path);
 		}
 
 		private bool IsVideo(string path)
@@ -361,10 +365,10 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 		}
 
-		private void AddToSets(ProcessingItem item)
+		private void AddToSets(PhotoModel item)
 		{
 			var f = _mgr.Surrogate;
-			foreach (var set in item.Item.Sets)
+			foreach (var set in item.Sets)
 			{
 				try
 				{
@@ -377,7 +381,7 @@ namespace uTILLIty.UploadrNet.Windows
 							if (string.IsNullOrEmpty(set.Id))
 							{
 								LogAction?.Invoke($"Creating new Set '{set.Title}'");
-								var newSet = f.PhotosetsCreate(set.Title, item.Item.PhotoId);
+								var newSet = f.PhotosetsCreate(set.Title, item.PhotoId);
 								set.Id = newSet.PhotosetId;
 								LogAction?.Invoke($"Created new Set '{set.Title}'");
 								added = true;
@@ -387,9 +391,9 @@ namespace uTILLIty.UploadrNet.Windows
 
 					if (!added)
 					{
-						f.PhotosetsAddPhoto(set.Id, item.Item.PhotoId);
+						f.PhotosetsAddPhoto(set.Id, item.PhotoId);
 					}
-					LogAction?.Invoke($"Added {item.Item.Filename} to Set '{set.Title}'");
+					LogAction?.Invoke($"Added {item.Filename} to Set '{set.Title}'");
 				}
 				catch (FlickrApiException ex)
 				{
@@ -405,18 +409,20 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 		}
 
-		private bool CheckIsDuplicate(ProcessingItem item)
+		private bool CheckIsDuplicate(PhotoModel item)
 		{
 			try
 			{
 				var f = _mgr.Surrogate;
-				var title = item.Item.Title ?? item.Item.Filename;
+				var title = item.Title ?? item.Filename;
+				var crcTag = BuildMachineTagExpression(CrcMachineTag, item.Crc32);
 				var query = new PhotoSearchOptions(_mgr.AccountDetails.UserId)
 				{
+					Extras = PhotoSearchExtras.Tags | PhotoSearchExtras.DateTaken,
 					MachineTagMode = MachineTagMode.AnyTag,
 					MachineTags =
-						BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.Item.LocalPath).ToLowerInvariant()) + " " +
-						BuildMachineTagExpression(CrcMachineTag, item.Item.Crc32)
+						BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.LocalPath).ToLowerInvariant()) + " " +
+						crcTag
 				};
 				var result = f.PhotosSearch(query);
 				if (result.Count == 0)
@@ -432,18 +438,21 @@ namespace uTILLIty.UploadrNet.Windows
 				{
 					return false;
 				}
-				var dlm = item.Item.DateTaken;
+				var dlm = item.DateTaken;
 				var dupItem = result.Count == 1
 					? result[0]
 					: result.FirstOrDefault(
 						d => !d.DateTakenUnknown && dlm.HasValue && d.DateTaken.Subtract(dlm.Value).TotalSeconds < 1) ??
 					  result.FirstOrDefault(d => d.DateTakenUnknown);
-				PhotoInfo xItem;
 				if (dupItem != null)
 				{
-					xItem = f.PhotosGetInfo(dupItem.PhotoId);
-					item.Item.PhotoId = dupItem.PhotoId;
-					return true;
+					var r = dupItem;
+					var rCrcTag = r.Tags.FirstOrDefault(t => t.StartsWith(CrcMachineTag));
+					if (rCrcTag == null || crcTag.Replace("\"", "").Equals(rCrcTag, StringComparison.InvariantCultureIgnoreCase))
+					{
+						item.PhotoId = dupItem.PhotoId;
+						return true;
+					}
 				}
 			}
 			catch (Exception ex)
@@ -453,47 +462,58 @@ namespace uTILLIty.UploadrNet.Windows
 			return false;
 		}
 
-		private void UpdateItem(ProcessingItem pItem)
+		private void UpdateItem(PhotoModel item)
 		{
-			var l = pItem.Item;
+			var l = item;
 			var f = _mgr.Surrogate;
-			var r = pItem.Item.GetRemoteDetails(f);
+			var r = item.GetRemoteDetails(f);
 
 			if (!string.IsNullOrEmpty(l.Title) || !string.IsNullOrEmpty(l.Description))
 			{
 				if (l.Title != r.Title) //bug: r.Description always null?! || l.Description != r.Description)
 				{
 					f.PhotosSetMeta(l.PhotoId, l.Title, l.Description);
-					LogAction?.Invoke($"Updated title/description of {l.Filename}");
+					LogAction?.Invoke($"Updated title/description of {l.Filename} " +
+					                  $"from Title={r.Title} Description={r.Description} " +
+					                  $"to Title={l.Title} Description={l.Description}");
 				}
 			}
 
-			if (l.Tags?.Any(t => !r.Tags.Any(rt => rt.Raw.Equals(t, StringComparison.CurrentCultureIgnoreCase))) ?? false)
+			//Tags on server don't contain quotes anymore!
+			if (l.Tags?.Any(t => !r.Tags.Any(rt => rt.Raw.Equals(t.Replace("\"", ""),
+				StringComparison.CurrentCultureIgnoreCase))) ?? false)
 			{
-				var allTags = r.Tags.Any()
-					? (bool) l.Tags?.Any()
-						? r.Tags.Select(t => t.Raw).Concat(l.Tags).Distinct().ToArray()
-						: r.Tags.Select(t => t.Raw).ToArray()
-					: l.Tags;
+				//var allTags = r.Tags.Any()
+				//	? (bool) l.Tags?.Any()
+				//		? r.Tags.Select(t => t.Raw).Concat(l.Tags).Distinct().ToArray()
+				//		: r.Tags.Select(t => t.Raw).ToArray()
+				//	: l.Tags;
 				f.PhotosSetTags(l.PhotoId, l.Tags);
-				LogAction?.Invoke($"Updated tags of {l.Filename}");
+				LogAction?.Invoke($"Updated tags of {l.Filename} " +
+				                  $"from '{string.Join("','", r.Tags.Select(t => t.Raw))}' " +
+				                  $"to '{string.Join("','", l.Tags)}'");
 			}
 
 			if (l.IsFamily != r.IsFamily || l.IsPublic != r.IsPublic || l.IsFriend != r.IsFriend)
 			{
-				f.PhotosSetPerms(l.PhotoId, l.IsPublic, l.IsFriend, l.IsFamily, PermissionComment.Everybody, PermissionAddMeta.Owner);
-				LogAction?.Invoke($"Updated rights/visibility of {l.Filename}");
+				f.PhotosSetPerms(l.PhotoId, l.IsPublic, l.IsFriend, l.IsFamily,
+					r.PermissionComment.GetValueOrDefault(), r.PermissionAddMeta.GetValueOrDefault());
+				LogAction?.Invoke($"Updated rights/visibility of {l.Filename} " +
+				                  $"from IsPublic={r.IsPublic} IsFriend={r.IsFriend} IsFamily={r.IsFamily} " +
+				                  $"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}");
 			}
 			if (l.SafetyLevel != r.SafetyLevel)
 			{
 				f.PhotosSetSafetyLevel(l.PhotoId, l.SafetyLevel, l.SearchState);
-				LogAction?.Invoke($"Updated safety-level of {l.Filename}");
+				LogAction?.Invoke(
+					$"Updated safety-level of {l.Filename} " +
+					$"from SafetyLevel.{r.SafetyLevel} (unknown SearchState) " +
+					$"to SafetyLevel.{l.SafetyLevel} SearchState.{l.SearchState}");
 			}
 		}
 
-		private bool Upload(ProcessingItem pItem)
+		private bool Upload(PhotoModel item)
 		{
-			var item = pItem.Item;
 			if (!string.IsNullOrEmpty(item.PhotoId))
 			{
 				return true;
@@ -511,11 +531,11 @@ namespace uTILLIty.UploadrNet.Windows
 					var f = _mgr.Surrogate;
 					item.PhotoId = f.UploadPicture(stream, fname, item.Title, item.Description, tags, item.IsPublic, item.IsFamily,
 						item.IsFriend, item.ContentType, item.SafetyLevel, item.SearchState);
-					LogAction?.Invoke($"{item.Filename} uploaded");
+					LogAction?.Invoke($"{item.Filename} uploaded (remote ID={item.PhotoId})");
 				}
 				catch (Exception ex)
 				{
-					pItem.AddError($"Error uploading photo: {ex.Message}", ex);
+					item.AddError($"Error uploading photo: {ex.Message}", ex);
 					return false;
 				}
 			}

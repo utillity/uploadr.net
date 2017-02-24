@@ -55,8 +55,8 @@ namespace uTILLIty.UploadrNet.Windows
 		[ValueArgument(typeof (ContentType), Argument.UnsetShortNameChar, "ctype")]
 		public ContentType ContentType { get; set; }
 
-		[ValueArgument(typeof (byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte) 10)]
-		public byte MaxConcurrentOperations { get; set; } = 10;
+		[ValueArgument(typeof (byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte) 20)]
+		public byte MaxConcurrentOperations { get; set; } = 20;
 
 		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "desc")]
 		public string Description { get; set; }

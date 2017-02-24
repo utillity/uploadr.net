@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using FlickrNet;
 
@@ -105,6 +106,20 @@ namespace uTILLIty.UploadrNet.Windows.Models
 
 		public ObservableCollection<PhotosetModel> Sets { get; } = new ObservableCollection<PhotosetModel>();
 		public string Crc32 { get; set; }
+		public int RetryCount { get; set; }
+
+		public void AddError(string msg, Exception ex)
+		{
+			Debug.WriteLine(ex.ToString());
+			AddMessage(msg + "\r\n" + ex);
+			State = ProcessingStateType.Retry;
+			RetryCount++;
+		}
+
+		public void AddMessage(string msg)
+		{
+			Errors = $"{DateTime.Now:T} {msg}\r\n{Errors}";
+		}
 
 		public PhotoInfo GetRemoteDetails(Flickr f)
 		{
