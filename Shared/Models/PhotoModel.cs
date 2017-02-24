@@ -104,6 +104,7 @@ namespace uTILLIty.UploadrNet.Windows.Models
 		}
 
 		public ObservableCollection<PhotosetModel> Sets { get; } = new ObservableCollection<PhotosetModel>();
+		public string Crc32 { get; set; }
 
 		public PhotoInfo GetRemoteDetails(Flickr f)
 		{

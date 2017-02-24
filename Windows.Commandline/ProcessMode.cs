@@ -118,7 +118,7 @@ namespace uTILLIty.UploadrNet.Windows
 				UpdateDuplicates = UpdateDuplicates,
 				CheckOnly = CheckOnly,
 				CheckForDuplicates = CheckForDuplicates,
-				LogAction = Console.WriteLine
+				LogAction = msg => Console.WriteLine($"{DateTime.Now:HH:mm:ss} {msg}")
 			};
 			var list = new List<PhotoModel>(1000);
 			//var di = new DirectoryInfo(cmdLine.RootDirectory);

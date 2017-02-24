@@ -17,9 +17,14 @@ namespace uTILLIty.UploadrNet.Windows.Models
 		public void AddError(string msg, Exception ex)
 		{
 			Debug.WriteLine(ex.ToString());
-			Item.Errors = $"{DateTime.Now:T} {msg}\r\n{Item.Errors}";
+			AddMessage(msg + "\r\n" + ex);
 			Item.State = ProcessingStateType.Retry;
 			RetryCount++;
+		}
+
+		public void AddMessage(string msg)
+		{
+			Item.Errors = $"{DateTime.Now:T} {msg}\r\n{Item.Errors}";
 		}
 	}
 }
