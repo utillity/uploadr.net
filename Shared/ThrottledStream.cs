@@ -23,9 +23,8 @@ namespace uTILLIty.UploadrNet.Windows
 			{
 				lock (SyncObject)
 				{
-					_bytesProcessed -= MaxBytesPerSecond;
-					if (_bytesProcessed < 0)
-						_bytesProcessed = 0;
+					//bugfix reset BytesProcessed to 0 to avoid "deadlocking" due to accumulation of more bytes being sent
+					_bytesProcessed = 0;
 				}
 				ResetEvent.Set();
 			};
