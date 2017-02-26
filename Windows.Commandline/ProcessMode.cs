@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using CommandLineParser.Arguments;
@@ -16,6 +17,72 @@ namespace uTILLIty.UploadrNet.Windows
 	internal class ProcessMode : ModeBase
 	{
 		private static readonly Regex ExpressionRegex = new Regex(@"(?in)(?<exp>\{(?<name>[^}]+)\})");
+		private readonly Dictionary<string, ExpandItem> _expandItems;
+
+		public ProcessMode()
+		{
+			var l = new HashSet<ExpandItem>
+			{
+				new ExpandItem("now", "the current date/time in ISO format", i => DateTime.Now.ToString("R"))
+				,
+				new ExpandItem("folder", "the immediate folder name of the media file",
+					i => new FileInfo(i.LocalPath).Directory?.Name)
+				,
+				new ExpandItem("path", "the complete path (without filename) of the media file",
+					i => Path.GetDirectoryName(i.LocalPath))
+				,
+				new ExpandItem("fname", "the filename of the media file", i => Path.GetFileNameWithoutExtension(i.LocalPath))
+				,
+				new ExpandItem("fnameAndExt", "the filename with extension of the media file", i => Path.GetFileName(i.LocalPath))
+				,
+				new ExpandItem("relRootFolder", "the first folder relative from the root folder specified", i =>
+				{
+					var path = Path.GetDirectoryName(i.LocalPath) ?? i.LocalPath;
+					return path.Length == RootDirectory.FullName.Length
+						? string.Empty
+						: path.Substring(RootDirectory.FullName.Length + 1).Split(Path.DirectorySeparatorChar)[0];
+				})
+				,
+				new ExpandItem("relpath", "the path relative from the root folder specified", i =>
+				{
+					var path = Path.GetDirectoryName(i.LocalPath) ?? i.LocalPath;
+					return path.Length == RootDirectory.FullName.Length
+						? string.Empty
+						: path.Substring(RootDirectory.FullName.Length + 1);
+				})
+				,
+				new ExpandItem("relpathastags", "the path relative from the root folder specified, in tag notation", i =>
+				{
+					var path = Path.GetDirectoryName(i.LocalPath) ?? i.LocalPath;
+					return path.Length == RootDirectory.FullName.Length
+						? string.Empty
+						: path.Substring(RootDirectory.FullName.Length + 1)
+							.Replace(',', '_')
+							.Replace(Path.DirectorySeparatorChar, ',');
+				})
+			};
+
+			_expandItems = l.ToDictionary(i => i.Key.ToLowerInvariant());
+		}
+
+		public override string AdditionalCommandlineArgsInfos
+		{
+			get
+			{
+				RootDirectory = new DirectoryInfo(@"c:\Images");
+				var pi = new PhotoModel {LocalPath = @"c:\Images\2001\Vacation\image1.jpg"};
+				var sb = new StringBuilder(500);
+				sb.AppendLine("The following expressions can be used within --title, --desc, and --tags:");
+				sb.AppendLine($"Example with a --source of '{RootDirectory.FullName}' and an image located in '{pi.LocalPath}':");
+				foreach (var i in _expandItems.Values)
+				{
+					sb.AppendLine($"{{{i.Key}}}:");
+					sb.AppendLine($"    {i.Description}");
+					sb.AppendLine($"    Example output: {i.Expand(pi)}");
+				}
+				return sb.ToString();
+			}
+		}
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "process", false, Optional = false,
 			Description = "Executes Process Mode, which uploads local files to Flickr")]
@@ -203,68 +270,16 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 		}
 
-		internal string Expand(string expression, PhotoModel item, Dictionary<string, string> inlineReplace = null)
+		internal string Expand(string expression, PhotoModel item)
 		{
 			if (string.IsNullOrEmpty(expression))
 				return null;
 
 			var expanded = ExpressionRegex.Replace(expression, m =>
 			{
-				string output;
-				switch (m.Groups["name"].Value.ToLowerInvariant())
-				{
-					case "now":
-						output = DateTime.Now.ToString("R");
-						break;
-					case "folder":
-						output = new FileInfo(item.LocalPath).Directory?.Name;
-						break;
-					case "path":
-						output = Path.GetDirectoryName(item.LocalPath);
-						break;
-					case "fname":
-						output = Path.GetFileNameWithoutExtension(item.LocalPath);
-						break;
-					case "fnameandext":
-						output = Path.GetFileName(item.LocalPath);
-						break;
-					case "relrootfolder":
-					{
-						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
-						output = path.Length == RootDirectory.FullName.Length
-							? string.Empty
-							: path.Substring(RootDirectory.FullName.Length + 1).Split(Path.DirectorySeparatorChar)[0];
-						break;
-					}
-					case "relpath":
-					{
-						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
-						output = path.Length == RootDirectory.FullName.Length
-							? string.Empty
-							: path.Substring(RootDirectory.FullName.Length + 1);
-						break;
-					}
-					case "relpathastags":
-					{
-						var path = Path.GetDirectoryName(item.LocalPath) ?? item.LocalPath;
-						output = path.Length == RootDirectory.FullName.Length
-							? string.Empty
-							: path.Substring(RootDirectory.FullName.Length + 1)
-								.Replace(',', '_')
-								.Replace(Path.DirectorySeparatorChar, ',');
-						break;
-					}
-					default:
-						output = m.Groups["exp"].Value;
-						break;
-				}
-				if (!string.IsNullOrEmpty(output) && inlineReplace != null)
-				{
-					foreach (var i in inlineReplace)
-					{
-						output = output.Replace(i.Key, i.Value);
-					}
-				}
+				var key = m.Groups["name"].Value.ToLowerInvariant();
+				ExpandItem action;
+				var output = _expandItems.TryGetValue(key, out action) ? action.Expand(item) : m.Groups["exp"].Value;
 				return output;
 			});
 			return expanded;

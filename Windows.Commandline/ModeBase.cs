@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using CommandLineParser.Arguments;
 
 namespace uTILLIty.UploadrNet.Windows
 {
@@ -7,6 +8,12 @@ namespace uTILLIty.UploadrNet.Windows
 	{
 		public abstract bool ModeChosen { get; set; }
 		public abstract FileInfo KeyFile { get; set; }
+
+		[SwitchArgument(Argument.UnsetShortNameChar, "showargs", false,
+			Description = "Show parsed arguments (with a pause, before starting to process")]
+		public bool ShowParsedArgs { get; set; }
+
+		public abstract string AdditionalCommandlineArgsInfos { get; }
 
 		public abstract void Execute();
 

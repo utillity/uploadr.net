@@ -6,7 +6,7 @@ namespace uTILLIty.UploadrNet.Windows
 {
 	internal class ListMode : ModeBase
 	{
-		[SwitchArgument(' ', "list", false, Optional = false,
+		[SwitchArgument(Argument.UnsetShortNameChar, "list", false, Optional = false,
 			Description = "Executes List Mode")]
 		public override bool ModeChosen { get; set; }
 
@@ -17,6 +17,8 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument('a', "albums", false,
 			Description = "Lists all albums")]
 		public bool ListAlbums { get; set; }
+
+		public override string AdditionalCommandlineArgsInfos { get; } = null;
 
 		public override void Execute()
 		{

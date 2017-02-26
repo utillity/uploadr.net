@@ -52,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AuthenticateMode.cs" />
+    <Compile Include="ExpandItem.cs" />
     <Compile Include="ListMode.cs" />
     <Compile Include="ModeBase.cs" />
     <Compile Include="ProcessMode.cs" />

@@ -16,6 +16,8 @@ namespace uTILLIty.UploadrNet.Windows
 			Description = "The file to save the token to (will be overwritten, if it exists)")]
 		public override FileInfo KeyFile { get; set; }
 
+		public override string AdditionalCommandlineArgsInfos { get; } = null;
+
 		public override void Execute()
 		{
 			if (!ModeChosen)

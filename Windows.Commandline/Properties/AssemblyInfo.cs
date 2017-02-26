@@ -6,13 +6,19 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 
-[assembly: AssemblyTitle("Windows.Commandline")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("Uploadr.Net")]
+[assembly:
+	AssemblyDescription(
+		"Upload automation tool for Yahoo(r) Flickr(r) (see https://github.com/utillity/uploadr.net for source-code and details)"
+		)]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("Windows.Commandline")]
-[assembly: AssemblyCopyright("Copyright ©  2017")]
-[assembly: AssemblyTrademark("")]
+[assembly: AssemblyCompany("utillity@gmx.net")]
+[assembly: AssemblyProduct("Uploadr.Net")]
+[assembly: AssemblyCopyright("Copyright © 2017 by Tilfried uTILLIty Weissenberger")]
+[assembly:
+	AssemblyTrademark(
+		"All trademarks and registered trademarks are the property of their respective owners. Flickr is a trademark or registered trademark of Yahoo. This tool is in no way affiliated by Yahoo or Flickr. By using this tool you agree to it's terms and conditions. Use at your own risk."
+		)]
 [assembly: AssemblyCulture("")]
 
 // Setting ComVisible to false makes the types in this assembly not visible 

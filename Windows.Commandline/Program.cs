@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Reflection;
 using CommandLineParser.Exceptions;
 
@@ -8,6 +9,17 @@ namespace uTILLIty.UploadrNet.Windows
 	{
 		private static void Main(string[] args)
 		{
+			var modeSelected = false;
+			var ver = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location);
+			Console.WriteLine();
+			PrintLine();
+			Console.WriteLine($"{ver.ProductName} Version {ver.FileVersion}");
+			Console.WriteLine($"{ver.Comments}");
+			PrintLine();
+			Console.WriteLine($"{ver.LegalCopyright} - {ver.CompanyName}");
+			Console.WriteLine($"{ver.LegalTrademarks}");
+			PrintLine();
+			Console.WriteLine();
 			try
 			{
 				var modes = new ModeBase[]
@@ -23,10 +35,16 @@ namespace uTILLIty.UploadrNet.Windows
 						parser.ExtractArgumentAttributes(mode);
 						parser.ParseCommandLine(args);
 
-						//parser.ShowParsedArguments();
-						//Console.WriteLine("Ready to Process! Press any key to continue");
-						//Console.ReadKey();
-						//Console.WriteLine("Starting...");
+						if (mode.ShowParsedArgs)
+						{
+							modeSelected = true;
+							PrintLine();
+							parser.ShowParsedArguments();
+							PrintLine();
+							Console.WriteLine("Ready to Process! Press any key to continue");
+							Console.ReadKey();
+							Console.WriteLine("Starting...");
+						}
 
 						mode.Execute();
 						Console.WriteLine("*** Completed ***");
@@ -36,9 +54,16 @@ namespace uTILLIty.UploadrNet.Windows
 					{
 						if (mode.ModeChosen)
 						{
-							Console.WriteLine($"\r\n\r\n\r\n{ex.Message}\r\n\r\nPlease check the parameters supplied!");
+							modeSelected = true;
 							parser.ShowUsage();
+							var infos = mode.AdditionalCommandlineArgsInfos;
+							if (!string.IsNullOrEmpty(infos))
+								Console.WriteLine(infos);
+							PrintLine();
 							parser.ShowParsedArguments();
+							PrintLine();
+							Console.WriteLine("*** FATAL ERROR OCCURED - CANNOT CONTINUE ***");
+							Console.WriteLine($"{ex.Message}");
 						}
 					}
 				}
@@ -51,8 +76,14 @@ namespace uTILLIty.UploadrNet.Windows
 				//Console.ReadLine();
 				return;
 			}
-			Console.WriteLine("Usage: --authenticate | --process");
+			if (!modeSelected)
+				Console.WriteLine("Usage: (--authenticate  | --list | --process) [parameters...]");
 			//Console.ReadLine();
+		}
+
+		private static void PrintLine()
+		{
+			Console.Write(new string('-', Console.BufferWidth));
 		}
 	}
 }
