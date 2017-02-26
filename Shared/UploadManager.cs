@@ -12,6 +12,8 @@ using Crc32C;
 using FlickrNet;
 using uTILLIty.UploadrNet.Windows.Models;
 
+// ReSharper disable UnusedMember.Global
+
 namespace uTILLIty.UploadrNet.Windows
 {
 	public class UploadManager : NotifyPropertyChangedBase
@@ -101,6 +103,12 @@ namespace uTILLIty.UploadrNet.Windows
 			_processQueue.AddRange(list);
 		}
 
+		private void Log(string msg)
+		{
+			Debug.WriteLine(msg);
+			LogAction?.Invoke(msg);
+		}
+
 		public async Task ProcessAsync()
 		{
 			if (IsBusy)
@@ -111,7 +119,7 @@ namespace uTILLIty.UploadrNet.Windows
 			{
 				double total = _processQueue.Count;
 				double left = _processQueue.Where(ShouldProcess).Count();
-				LogAction($"Status-Update: {(total - left)/total*100:N0}% complete - {left} items left to process");
+				Log($"*** Status-Update: {(total - left)/total*100:N0}% complete - {left} items left to process ***");
 			}, null, 60000, 60000);
 
 			try
@@ -126,7 +134,7 @@ namespace uTILLIty.UploadrNet.Windows
 					if (!items.Any() || token.IsCancellationRequested)
 						break;
 
-					LogAction($"Processing {items.Length} items from queue (with {MaxConcurrentOperations} worker-threads)...");
+					Log($"Processing {items.Length} items from queue (with {MaxConcurrentOperations} worker-threads)...");
 					var result = Parallel.ForEach(items,
 						new ParallelOptions {MaxDegreeOfParallelism = MaxConcurrentOperations, CancellationToken = token},
 						ProcessItem);
@@ -159,12 +167,13 @@ namespace uTILLIty.UploadrNet.Windows
 					}
 					item.State = ProcessingStateType.Failed;
 					return false;
-				case ProcessingStateType.Success:
+				case ProcessingStateType.Completed:
 				case ProcessingStateType.Failed:
 					return false;
+				case ProcessingStateType.Duplicate:
+					return UpdateDuplicates;
 				default:
 					//case ProcessingStateType.Pending:
-					//case ProcessingStateType.Duplicate:
 					//case ProcessingStateType.ReadyToUpload:
 					//case ProcessingStateType.Uploading:
 					//case ProcessingStateType.Uploaded:
@@ -197,7 +206,7 @@ namespace uTILLIty.UploadrNet.Windows
 
 				if (CheckOnly)
 				{
-					item.State = ProcessingStateType.Success;
+					item.State = ProcessingStateType.Completed;
 					return;
 				}
 
@@ -207,7 +216,7 @@ namespace uTILLIty.UploadrNet.Windows
 				if (item.State == ProcessingStateType.ReadyToUpload)
 				{
 					if (UpdateOnly)
-						item.State = ProcessingStateType.Success;
+						item.State = ProcessingStateType.Completed;
 					else
 					{
 						if (token.IsCancellationRequested)
@@ -222,15 +231,18 @@ namespace uTILLIty.UploadrNet.Windows
 				{
 					AddToSets(item);
 					FixDateTakenIfVideo(item);
-					item.State = ProcessingStateType.Success;
+					item.State = ProcessingStateType.Completed;
 				}
 
-				if (item.State == ProcessingStateType.Duplicate && UpdateDuplicates)
+				if (item.State == ProcessingStateType.Duplicate)
 				{
-					UpdateItem(item);
-					AddToSets(item);
-					FixDateTakenIfVideo(item);
-					item.State = ProcessingStateType.Success;
+					if (UpdateDuplicates)
+					{
+						UpdateItem(item);
+						AddToSets(item);
+						FixDateTakenIfVideo(item);
+					}
+					item.State = ProcessingStateType.Completed;
 				}
 			}
 			catch (Exception ex)
@@ -239,11 +251,22 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 			finally
 			{
-				Debug.WriteLine($"Completed {item.Filename} ({item.State})");
-				if (item.State != ProcessingStateType.Success)
+				Debug.WriteLine($"Completed {item.Filename} in state ({item.State})");
+				switch (item.State)
 				{
-					LogAction($"{item.Filename} completed in state {item.State}");
-					LogAction($"{item.Filename} Errors:\r\n{item.Errors}");
+					case ProcessingStateType.Failed:
+					case ProcessingStateType.Retry:
+						Log($"{item.Filename} completed in state {item.State}");
+						Log($"{item.Filename} Errors:\r\n{item.Errors}");
+						break;
+					//case ProcessingStateType.Duplicate:
+					//case ProcessingStateType.Completed:
+					//case ProcessingStateType.Pending:
+					//case ProcessingStateType.ReadyToUpload:
+					//case ProcessingStateType.Uploading:
+					//case ProcessingStateType.Uploaded:
+					//default:
+					//	break;
 				}
 			}
 		}
@@ -281,6 +304,7 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			var tags = new List<string>(item.Tags ?? new string[0]);
 			if (!tags.Any(t => t.StartsWith(FilenameMachineTag)))
+				// ReSharper disable once PossibleNullReferenceException
 				tags.Add(BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.LocalPath).ToLowerInvariant()));
 
 			if (!tags.Any(t => t.StartsWith(ImportPathMachineTag)))
@@ -312,12 +336,12 @@ namespace uTILLIty.UploadrNet.Windows
 
 			var f = _mgr.Surrogate;
 			var r = item.GetRemoteDetails(f);
-			var dt = item.DateTaken.Value;
+			var dt = item.DateTaken.GetValueOrDefault();
 			var rdt = r.DateTakenUnknown ? DateTime.MinValue : r.DateTaken.Date.ToUniversalTime();
 			if (!dt.ToUniversalTime().Date.Equals(rdt))
 			{
 				f.PhotosSetDates(item.PhotoId, dt, DateGranularity.FullDate);
-				LogAction?.Invoke($"Updated Date-Taken (to {dt:d}) for video {item.Filename}");
+				Log($"Updated Date-Taken (to {dt:d}) for video {item.Filename}");
 			}
 		}
 
@@ -329,6 +353,7 @@ namespace uTILLIty.UploadrNet.Windows
 
 		private bool IsVideo(string path)
 		{
+			// ReSharper disable once PossibleNullReferenceException
 			var ext = Path.GetExtension(path).ToLowerInvariant().Substring(1);
 			return VideoFormats.Contains(ext);
 		}
@@ -360,7 +385,7 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 			catch (ArgumentException) //Property cannot be found.
 			{
-				LogAction($"Date-Taken EXIF Property (36867) for '{path}' could not be found. Using Date-Modified instead");
+				Log($"Date-Taken EXIF Property (36867) for '{path}' could not be found. Using Date-Modified instead");
 				return GetDateModified(path);
 			}
 		}
@@ -380,10 +405,10 @@ namespace uTILLIty.UploadrNet.Windows
 						{
 							if (string.IsNullOrEmpty(set.Id))
 							{
-								LogAction?.Invoke($"Creating new Set '{set.Title}'");
+								Log($"Creating new Set '{set.Title}'");
 								var newSet = f.PhotosetsCreate(set.Title, item.PhotoId);
 								set.Id = newSet.PhotosetId;
-								LogAction?.Invoke($"Created new Set '{set.Title}'");
+								Log($"Created new Set '{set.Title}'");
 								added = true;
 							}
 						}
@@ -393,7 +418,7 @@ namespace uTILLIty.UploadrNet.Windows
 					{
 						f.PhotosetsAddPhoto(set.Id, item.PhotoId);
 					}
-					LogAction?.Invoke($"Added {item.Filename} to Set '{set.Title}'");
+					Log($"Added {item.Filename} to Set '{set.Title}'");
 				}
 				catch (FlickrApiException ex)
 				{
@@ -421,8 +446,8 @@ namespace uTILLIty.UploadrNet.Windows
 					Extras = PhotoSearchExtras.Tags | PhotoSearchExtras.DateTaken,
 					MachineTagMode = MachineTagMode.AnyTag,
 					MachineTags =
-						BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.LocalPath).ToLowerInvariant()) + " " +
-						crcTag
+						// ReSharper disable once PossibleNullReferenceException
+						BuildMachineTagExpression(FilenameMachineTag, Path.GetFileName(item.LocalPath).ToLowerInvariant()) + " " + crcTag
 				};
 				var result = f.PhotosSearch(query);
 				if (result.Count == 0)
@@ -473,15 +498,16 @@ namespace uTILLIty.UploadrNet.Windows
 				if (l.Title != r.Title) //bug: r.Description always null?! || l.Description != r.Description)
 				{
 					f.PhotosSetMeta(l.PhotoId, l.Title, l.Description);
-					LogAction?.Invoke($"Updated title/description of {l.Filename} " +
-					                  $"from Title={r.Title} Description={r.Description} " +
-					                  $"to Title={l.Title} Description={l.Description}");
+					Log($"Updated title/description of {l.Filename} " +
+						$"from Title={r.Title} Description={r.Description} " +
+						$"to Title={l.Title} Description={l.Description}");
 				}
 			}
 
 			//Tags on server don't contain quotes anymore!
-			if (l.Tags?.Any(t => !r.Tags.Any(rt => rt.Raw.Equals(t.Replace("\"", ""),
-				StringComparison.CurrentCultureIgnoreCase))) ?? false)
+			if (
+				l.Tags?.Any(t => !r.Tags.Any(rt => rt.Raw.Equals(t.Replace("\"", ""), StringComparison.CurrentCultureIgnoreCase))) ??
+				false)
 			{
 				//var allTags = r.Tags.Any()
 				//	? (bool) l.Tags?.Any()
@@ -489,24 +515,22 @@ namespace uTILLIty.UploadrNet.Windows
 				//		: r.Tags.Select(t => t.Raw).ToArray()
 				//	: l.Tags;
 				f.PhotosSetTags(l.PhotoId, l.Tags);
-				LogAction?.Invoke($"Updated tags of {l.Filename} " +
-				                  $"from '{string.Join("','", r.Tags.Select(t => t.Raw))}' " +
-				                  $"to '{string.Join("','", l.Tags)}'");
+				Log($"Updated tags of {l.Filename} " + $"from '{string.Join("','", r.Tags.Select(t => t.Raw))}' " +
+					$"to '{string.Join("','", l.Tags)}'");
 			}
 
 			if (l.IsFamily != r.IsFamily || l.IsPublic != r.IsPublic || l.IsFriend != r.IsFriend)
 			{
-				f.PhotosSetPerms(l.PhotoId, l.IsPublic, l.IsFriend, l.IsFamily,
-					r.PermissionComment.GetValueOrDefault(), r.PermissionAddMeta.GetValueOrDefault());
-				LogAction?.Invoke($"Updated rights/visibility of {l.Filename} " +
-				                  $"from IsPublic={r.IsPublic} IsFriend={r.IsFriend} IsFamily={r.IsFamily} " +
-				                  $"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}");
+				f.PhotosSetPerms(l.PhotoId, l.IsPublic, l.IsFriend, l.IsFamily, r.PermissionComment.GetValueOrDefault(),
+					r.PermissionAddMeta.GetValueOrDefault());
+				Log($"Updated rights/visibility of {l.Filename} " +
+					$"from IsPublic={r.IsPublic} IsFriend={r.IsFriend} IsFamily={r.IsFamily} " +
+					$"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}");
 			}
 			if (l.SafetyLevel != r.SafetyLevel)
 			{
 				f.PhotosSetSafetyLevel(l.PhotoId, l.SafetyLevel, l.SearchState);
-				LogAction?.Invoke(
-					$"Updated safety-level of {l.Filename} " +
+				Log($"Updated safety-level of {l.Filename} " +
 					$"from SafetyLevel.{r.SafetyLevel} (unknown SearchState) " +
 					$"to SafetyLevel.{l.SafetyLevel} SearchState.{l.SearchState}");
 			}
@@ -519,7 +543,7 @@ namespace uTILLIty.UploadrNet.Windows
 				return true;
 			}
 
-			using (var stream = File.OpenRead(item.LocalPath))
+			using (var stream = new ThrottledStream(File.OpenRead(item.LocalPath)))
 			{
 				var fname = item.Filename;
 				if (string.IsNullOrEmpty(item.Title))
@@ -531,7 +555,7 @@ namespace uTILLIty.UploadrNet.Windows
 					var f = _mgr.Surrogate;
 					item.PhotoId = f.UploadPicture(stream, fname, item.Title, item.Description, tags, item.IsPublic, item.IsFamily,
 						item.IsFriend, item.ContentType, item.SafetyLevel, item.SearchState);
-					LogAction?.Invoke($"{item.Filename} uploaded (remote ID={item.PhotoId})");
+					Log($"{item.Filename} uploaded (remote ID={item.PhotoId})");
 				}
 				catch (Exception ex)
 				{

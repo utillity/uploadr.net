@@ -7,6 +7,7 @@ namespace uTILLIty.UploadrNet.Windows
 	[TestClass]
 	public class ProcessModeTests
 	{
+		// ReSharper disable once UnusedAutoPropertyAccessor.Global
 		public TestContext TestContext { get; set; }
 
 		[TestMethod, TestCategory("ProcessMode")]

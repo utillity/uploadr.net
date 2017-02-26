@@ -10,6 +10,7 @@ namespace uTILLIty.UploadrNet.Windows
 		private static void Main(string[] args)
 		{
 			var modeSelected = false;
+			// ReSharper disable once AssignNullToNotNullAttribute
 			var ver = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location);
 			Console.WriteLine();
 			PrintLine();
@@ -56,14 +57,14 @@ namespace uTILLIty.UploadrNet.Windows
 						{
 							modeSelected = true;
 							parser.ShowUsage();
-							var infos = mode.AdditionalCommandlineArgsInfos;
+							var infos = mode.GetAdditionalUsageHints();
 							if (!string.IsNullOrEmpty(infos))
 								Console.WriteLine(infos);
 							PrintLine();
 							parser.ShowParsedArguments();
 							PrintLine();
 							Console.WriteLine("*** FATAL ERROR OCCURED - CANNOT CONTINUE ***");
-							Console.WriteLine($"{ex.Message}");
+							Console.WriteLine($"{ex.Message}\r\n{ex.InnerException}");
 						}
 					}
 				}
@@ -83,7 +84,7 @@ namespace uTILLIty.UploadrNet.Windows
 
 		private static void PrintLine()
 		{
-			Console.Write(new string('-', Console.BufferWidth));
+			Console.WriteLine(new string('-', Console.BufferWidth - 1));
 		}
 	}
 }

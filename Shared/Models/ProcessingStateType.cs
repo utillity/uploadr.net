@@ -8,7 +8,7 @@
 		Uploading,
 		Uploaded,
 		Retry,
-		Success,
+		Completed,
 		Failed
 	}
 }

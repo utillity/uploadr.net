@@ -2,6 +2,8 @@
 using System.IO;
 using CommandLineParser.Arguments;
 
+// ReSharper disable UnusedAutoPropertyAccessor.Global
+
 namespace uTILLIty.UploadrNet.Windows
 {
 	internal class ListMode : ModeBase
@@ -14,11 +16,13 @@ namespace uTILLIty.UploadrNet.Windows
 			Description = "The file to save the token to (will be overwritten, if it exists)")]
 		public override FileInfo KeyFile { get; set; }
 
+		[SwitchArgument(Argument.UnsetShortNameChar, "showargs", false,
+			Description = "Show parsed arguments (with a pause, before starting to process)")]
+		public override bool ShowParsedArgs { get; set; }
+
 		[SwitchArgument('a', "albums", false,
 			Description = "Lists all albums")]
 		public bool ListAlbums { get; set; }
-
-		public override string AdditionalCommandlineArgsInfos { get; } = null;
 
 		public override void Execute()
 		{

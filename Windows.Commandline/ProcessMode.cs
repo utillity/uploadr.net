@@ -65,31 +65,16 @@ namespace uTILLIty.UploadrNet.Windows
 			_expandItems = l.ToDictionary(i => i.Key.ToLowerInvariant());
 		}
 
-		public override string AdditionalCommandlineArgsInfos
-		{
-			get
-			{
-				RootDirectory = new DirectoryInfo(@"c:\Images");
-				var pi = new PhotoModel {LocalPath = @"c:\Images\2001\Vacation\image1.jpg"};
-				var sb = new StringBuilder(500);
-				sb.AppendLine("The following expressions can be used within --title, --desc, and --tags:");
-				sb.AppendLine($"Example with a --source of '{RootDirectory.FullName}' and an image located in '{pi.LocalPath}':");
-				foreach (var i in _expandItems.Values)
-				{
-					sb.AppendLine($"{{{i.Key}}}:");
-					sb.AppendLine($"    {i.Description}");
-					sb.AppendLine($"    Example output: {i.Expand(pi)}");
-				}
-				return sb.ToString();
-			}
-		}
-
 		[SwitchArgument(Argument.UnsetShortNameChar, "process", false, Optional = false,
 			Description = "Executes Process Mode, which uploads local files to Flickr")]
 		public override bool ModeChosen { get; set; }
 
+		[SwitchArgument(Argument.UnsetShortNameChar, "showargs", false,
+			Description = "Show parsed arguments (with a pause, before starting to process)")]
+		public override bool ShowParsedArgs { get; set; }
+
 		[DirectoryArgument('s', "source", Optional = false, DirectoryMustExist = true,
-			Description = "The source directory to scan (will also scan all subdirectories below it")]
+			Description = "The source directory to scan (will also scan all subdirectories below it)")]
 		public DirectoryInfo RootDirectory { get; set; }
 
 		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
@@ -122,6 +107,9 @@ namespace uTILLIty.UploadrNet.Windows
 		[ValueArgument(typeof (ContentType), Argument.UnsetShortNameChar, "ctype")]
 		public ContentType ContentType { get; set; }
 
+		[ValueArgument(typeof (decimal), Argument.UnsetShortNameChar, "mbpersec")]
+		public decimal MaxBandwidthMb { get; set; }
+
 		[ValueArgument(typeof (byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte) 20)]
 		public byte MaxConcurrentOperations { get; set; } = 20;
 
@@ -150,6 +138,22 @@ namespace uTILLIty.UploadrNet.Windows
 			DefaultValue = "{fname}")]
 		public string Title { get; set; }
 
+		public override string GetAdditionalUsageHints()
+		{
+			RootDirectory = new DirectoryInfo(@"c:\Images");
+			var pi = new PhotoModel {LocalPath = @"c:\Images\2001\Vacation\image1.jpg"};
+			var sb = new StringBuilder(500);
+			sb.AppendLine("The following expressions can be used within --title, --desc, and --tags:");
+			sb.AppendLine($"Example with a --source of '{RootDirectory.FullName}' and an image located in '{pi.LocalPath}':");
+			foreach (var i in _expandItems.Values)
+			{
+				sb.AppendLine($"{{{i.Key}}}:");
+				sb.AppendLine($"    {i.Description}");
+				sb.AppendLine($"    Example output: {i.Expand(pi)}");
+			}
+			return sb.ToString();
+		}
+
 		public override void Execute()
 		{
 			if (!ModeChosen)
@@ -176,6 +180,14 @@ namespace uTILLIty.UploadrNet.Windows
 					.ToArray();
 			}
 
+			if (MaxBandwidthMb <= 0)
+				ThrottledStream.MaxBytesPerSecond = int.MaxValue;
+			else
+			{
+				ThrottledStream.MaxBytesPerSecond = (int) (MaxBandwidthMb*1024m*1024m/8m);
+				Console.WriteLine($"Processing at {ThrottledStream.MaxBytesPerSecond:N} bytes/sec.");
+			}
+
 			var mgr = LoadToken();
 
 			var ct = new CancellationToken();
@@ -183,6 +195,7 @@ namespace uTILLIty.UploadrNet.Windows
 			{
 				MaxConcurrentOperations = MaxConcurrentOperations,
 				UpdateDuplicates = UpdateDuplicates,
+				UpdateOnly = UpdateOnly,
 				CheckOnly = CheckOnly,
 				CheckForDuplicates = CheckForDuplicates,
 				LogAction = msg => Console.WriteLine($"{DateTime.Now:HH:mm:ss} {msg}")
@@ -207,7 +220,6 @@ namespace uTILLIty.UploadrNet.Windows
 			{
 				knownSets.Add(s);
 			}
-			var tagReplace = new Dictionary<string, string> {{",", " "}, {"  ", " "}};
 
 			foreach (var item in list)
 			{
@@ -287,30 +299,24 @@ namespace uTILLIty.UploadrNet.Windows
 
 		private void FillPhotosFromPath(DirectoryInfo di, List<PhotoModel> list, int prefixLen)
 		{
-			var q = new Queue<DirectoryInfo>();
-			q.Enqueue(di);
-			while (q.Count > 0)
+			Console.Write($"Scanning {di.FullName.Substring(prefixLen)}... ");
+			var files = di.GetFiles();
+			var added = 0;
+			foreach (var f in files)
 			{
-				di = q.Dequeue();
-				Console.Write($"Scanning {di.FullName.Substring(prefixLen)}... ");
-				var files = di.GetFiles();
-				var added = 0;
-				foreach (var f in files)
+				var ext = f.Extension.ToLowerInvariant().Substring(1); //remove .
+				if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
 				{
-					var ext = f.Extension.ToLowerInvariant().Substring(1); //remove .
-					if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
-					{
-						var item = new PhotoModel {LocalPath = f.FullName};
-						list.Add(item);
-						added++;
-					}
+					var item = new PhotoModel {LocalPath = f.FullName};
+					list.Add(item);
+					added++;
 				}
-				Console.WriteLine($"{added} files queued");
-				var dirs = di.GetDirectories();
-				foreach (var dir in dirs)
-				{
-					q.Enqueue(dir);
-				}
+			}
+			Console.WriteLine($"{added} files queued");
+			var dirs = di.GetDirectories();
+			foreach (var dir in dirs)
+			{
+				FillPhotosFromPath(dir, list, prefixLen);
 			}
 		}
 	}

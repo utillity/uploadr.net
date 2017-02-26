@@ -16,7 +16,9 @@ namespace uTILLIty.UploadrNet.Windows
 			Description = "The file to save the token to (will be overwritten, if it exists)")]
 		public override FileInfo KeyFile { get; set; }
 
-		public override string AdditionalCommandlineArgsInfos { get; } = null;
+		[SwitchArgument(Argument.UnsetShortNameChar, "showargs", false,
+			Description = "Show parsed arguments (with a pause, before starting to process)")]
+		public override bool ShowParsedArgs { get; set; }
 
 		public override void Execute()
 		{

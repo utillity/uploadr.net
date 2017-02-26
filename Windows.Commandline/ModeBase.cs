@@ -1,19 +1,23 @@
 ﻿using System;
 using System.IO;
-using CommandLineParser.Arguments;
+
+// ReSharper disable UnusedMember.Global
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace uTILLIty.UploadrNet.Windows
 {
 	internal abstract class ModeBase
 	{
+		/* CLP cannot traverse sub-types for properties! */
+
 		public abstract bool ModeChosen { get; set; }
 		public abstract FileInfo KeyFile { get; set; }
+		public abstract bool ShowParsedArgs { get; set; }
 
-		[SwitchArgument(Argument.UnsetShortNameChar, "showargs", false,
-			Description = "Show parsed arguments (with a pause, before starting to process")]
-		public bool ShowParsedArgs { get; set; }
-
-		public abstract string AdditionalCommandlineArgsInfos { get; }
+		public virtual string GetAdditionalUsageHints()
+		{
+			return null;
+		}
 
 		public abstract void Execute();
 

@@ -65,6 +65,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="ThrottledStream.cs" />
     <Compile Include="UploadManager.cs" />
   </ItemGroup>
   <ItemGroup>
