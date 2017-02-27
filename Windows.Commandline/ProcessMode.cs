@@ -18,6 +18,9 @@ namespace uTILLIty.UploadrNet.Windows
 	{
 		private static readonly Regex ExpressionRegex = new Regex(@"(?in)(?<exp>\{(?<name>[^}]+)\})");
 		private readonly Dictionary<string, ExpandItem> _expandItems;
+		private decimal _lastMaxBandwidth;
+
+		private DateTime _qLastSaved;
 
 		public ProcessMode()
 		{
@@ -77,14 +80,20 @@ namespace uTILLIty.UploadrNet.Windows
 			Description = "The source directory to scan (will also scan all subdirectories below it)")]
 		public DirectoryInfo RootDirectory { get; set; }
 
-		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
+		[FileArgument(Argument.UnsetShortNameChar, "queue", Optional = true, FileMustExist = false,
+			Description =
+				"If the file exists, the queue (files to process) is loaded from it. The queue is also periodically saved to this file"
+			)]
+		public FileInfo QueueFile { get; set; }
+
+		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
 			Description = "The file-types to process. Use 'videos' and 'photos', or individual extension (ie 'png jpg jpeg')")]
 		public string[] FileTypes { get; set; }
 
 		[FileArgument('k', "key", Optional = false, FileMustExist = true)]
 		public override FileInfo KeyFile { get; set; }
 
-		[ValueArgument(typeof (string), 'a', "album", AllowMultiple = true,
+		[ValueArgument(typeof(string), 'a', "album", AllowMultiple = true,
 			Description = "Use either the album-name, or ID:<albumId>. AlbumID can be retrieved using LIST mode.")]
 		public string[] AddToSets { get; set; }
 
@@ -104,16 +113,16 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument(Argument.UnsetShortNameChar, "updatedups", false)]
 		public bool UpdateDuplicates { get; set; }
 
-		[ValueArgument(typeof (ContentType), Argument.UnsetShortNameChar, "ctype")]
+		[ValueArgument(typeof(ContentType), Argument.UnsetShortNameChar, "ctype")]
 		public ContentType ContentType { get; set; }
 
-		[ValueArgument(typeof (decimal), Argument.UnsetShortNameChar, "mbpersec")]
+		[ValueArgument(typeof(decimal), Argument.UnsetShortNameChar, "mbpersec")]
 		public decimal MaxBandwidthMb { get; set; }
 
-		[ValueArgument(typeof (byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte) 20)]
+		[ValueArgument(typeof(byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte)20)]
 		public byte MaxConcurrentOperations { get; set; } = 20;
 
-		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "desc")]
+		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "desc")]
 		public string Description { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "family", false)]
@@ -125,23 +134,23 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument(Argument.UnsetShortNameChar, "public", false)]
 		public bool IsPublic { get; set; }
 
-		[ValueArgument(typeof (SafetyLevel), Argument.UnsetShortNameChar, "safety")]
+		[ValueArgument(typeof(SafetyLevel), Argument.UnsetShortNameChar, "safety")]
 		public SafetyLevel SafetyLevel { get; set; }
 
-		[ValueArgument(typeof (HiddenFromSearch), Argument.UnsetShortNameChar, "search")]
+		[ValueArgument(typeof(HiddenFromSearch), Argument.UnsetShortNameChar, "search")]
 		public HiddenFromSearch SearchState { get; set; }
 
-		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "tags")]
+		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "tags")]
 		public string Tags { get; set; }
 
-		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "title",
+		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "title",
 			DefaultValue = "{fname}")]
 		public string Title { get; set; }
 
 		public override string GetAdditionalUsageHints()
 		{
 			RootDirectory = new DirectoryInfo(@"c:\Images");
-			var pi = new PhotoModel {LocalPath = @"c:\Images\2001\Vacation\image1.jpg"};
+			var pi = new PhotoModel { LocalPath = @"c:\Images\2001\Vacation\image1.jpg" };
 			var sb = new StringBuilder(500);
 			sb.AppendLine("The following expressions can be used within --title, --desc, and --tags:");
 			sb.AppendLine($"Example with a --source of '{RootDirectory.FullName}' and an image located in '{pi.LocalPath}':");
@@ -180,17 +189,12 @@ namespace uTILLIty.UploadrNet.Windows
 					.ToArray();
 			}
 
-			if (MaxBandwidthMb <= 0)
-				ThrottledStream.MaxBytesPerSecond = int.MaxValue;
-			else
-			{
-				ThrottledStream.MaxBytesPerSecond = (int) (MaxBandwidthMb*1024m*1024m/8m);
-				Console.WriteLine($"Processing at {ThrottledStream.MaxBytesPerSecond:N} bytes/sec.");
-			}
+			SetMaxBandwidth(MaxBandwidthMb);
 
 			var mgr = LoadToken();
 
-			var ct = new CancellationToken();
+			var cts = new CancellationTokenSource();
+			var ct = cts.Token;
 			var uploadMgr = new UploadManager(ct, mgr)
 			{
 				MaxConcurrentOperations = MaxConcurrentOperations,
@@ -200,15 +204,164 @@ namespace uTILLIty.UploadrNet.Windows
 				CheckForDuplicates = CheckForDuplicates,
 				LogAction = msg => Console.WriteLine($"{DateTime.Now:HH:mm:ss} {msg}")
 			};
-			var list = new List<PhotoModel>(1000);
+			var list = TryLoadQueue() ?? new List<PhotoModel>(1000);
 			//var di = new DirectoryInfo(cmdLine.RootDirectory);
 			var di = RootDirectory;
-			FillPhotosFromPath(di, list, (di.Parent?.FullName.Length ?? -1) + 1);
-			SetFromCommandline(mgr, list);
+			if (!list.Any())
+			{
+				FillPhotosFromPath(di, list, (di.Parent?.FullName.Length ?? -1) + 1);
+				SetFromCommandline(mgr, list);
+			}
 			Console.WriteLine($"Starting to process {list.Count} files...");
+			PrintHelp();
 			//Console.ReadLine();
 			uploadMgr.AddRange(list);
-			uploadMgr.ProcessAsync().Wait(ct);
+			SaveQueue(list);
+			var task = uploadMgr.ProcessAsync();
+			var isPaused = false;
+			while (!task.IsCompleted || isPaused)
+			{
+				Thread.Sleep(50);
+				if (DateTime.Now.Subtract(_qLastSaved).TotalMinutes > 1)
+					SaveQueue(list);
+
+				if (Console.KeyAvailable)
+				{
+					var x = Console.ReadKey(true);
+					switch (x.KeyChar)
+					{
+						case '?':
+							PrintHelp();
+							break;
+						case '0':
+							SetMaxBandwidth(0);
+							break;
+						case '1':
+							SetMaxBandwidth(1);
+							break;
+						case '2':
+							SetMaxBandwidth(2);
+							break;
+						case '3':
+							SetMaxBandwidth(3);
+							break;
+						case '4':
+							SetMaxBandwidth(4);
+							break;
+						case '5':
+							SetMaxBandwidth(5);
+							break;
+						case '6':
+							SetMaxBandwidth(6);
+							break;
+						case '7':
+							SetMaxBandwidth(7);
+							break;
+						case '8':
+							SetMaxBandwidth(8);
+							break;
+						case '9':
+							SetMaxBandwidth(9);
+							break;
+						case '+':
+							SetMaxBandwidth(_lastMaxBandwidth, 0.5m);
+							break;
+						case '-':
+							SetMaxBandwidth(_lastMaxBandwidth, -0.5m);
+							break;
+						case 'p':
+						case 'P':
+							if (isPaused)
+							{
+								Console.WriteLine("*** Continuing Processing...");
+								task = uploadMgr.ProcessAsync();
+								isPaused = false;
+							}
+							else
+							{
+								Console.WriteLine("*** Pausing Processing...");
+								isPaused = true;
+								cts.Cancel();
+								while (!task.IsCompleted)
+									Thread.Sleep(10);
+								Console.WriteLine("*** Processing paused! Press P again to continue ***");
+								SaveQueue(list);
+							}
+							break;
+						case 'q':
+						case 'Q':
+							if (!isPaused)
+							{
+								Console.WriteLine("*** Aborting Processing...");
+								cts.Cancel();
+								while (!task.IsCompleted)
+									Thread.Sleep(10);
+							}
+							Console.WriteLine("*** Processing aborted! ***");
+							break;
+					}
+				}
+			}
+			SaveQueue(list);
+		}
+
+		private static void PrintHelp()
+		{
+			Console.WriteLine("Use the following commands (lowercase keys):");
+			Console.WriteLine("  ?    = print this cheat-sheet");
+			Console.WriteLine("  P    = pause processing");
+			Console.WriteLine("  Q    = abort processing");
+			Console.WriteLine("  0    = no speedlimit");
+			Console.WriteLine("  1..9 = [x]mbit speedlimit");
+			Console.WriteLine("  +    = +0.5mbit speedlimit");
+			Console.WriteLine("  -    = -0.5mbit speedlimit");
+		}
+
+		private List<PhotoModel> TryLoadQueue()
+		{
+			if (!QueueFile.Exists)
+				return null;
+			using (var stream = QueueFile.OpenRead())
+			{
+				Console.WriteLine("*** Loading Queue...");
+				var list = stream.Load<List<PhotoModel>>(null);
+				Console.WriteLine($"*** Loaded {list.Count} items into Queue ***");
+				return list;
+			}
+		}
+
+		private void SaveQueue(List<PhotoModel> list)
+		{
+			if (QueueFile == null)
+				return;
+			using (var stream = QueueFile.OpenWrite())
+			{
+				Console.WriteLine("*** Saving Queue...");
+				list.ToXml(stream, Encoding.Default, null);
+				_qLastSaved = DateTime.Now;
+				Console.WriteLine("*** Queue saved ***");
+			}
+		}
+
+		private void SetMaxBandwidth(decimal mbit, decimal relative = 0)
+		{
+			if (relative != 0)
+			{
+				if (_lastMaxBandwidth <= 0)
+					return;
+				mbit = _lastMaxBandwidth + relative;
+			}
+			if (mbit <= 0)
+			{
+				ThrottledStream.MaxBytesPerSecond = int.MaxValue;
+				Console.WriteLine("Processing at full upload speed");
+			}
+			else
+			{
+				ThrottledStream.MaxBytesPerSecond = (int)(mbit * 1024m * 1024m / 8m);
+				Console.WriteLine($"Processing at {mbit:N1}mbit ({ThrottledStream.MaxBytesPerSecond:N} bytes/sec.)");
+			}
+			_lastMaxBandwidth = mbit;
 		}
 
 		private void SetFromCommandline(FlickrManager mgr, List<PhotoModel> list)
@@ -307,7 +460,7 @@ namespace uTILLIty.UploadrNet.Windows
 				var ext = f.Extension.ToLowerInvariant().Substring(1); //remove .
 				if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
 				{
-					var item = new PhotoModel {LocalPath = f.FullName};
+					var item = new PhotoModel { LocalPath = f.FullName };
 					list.Add(item);
 					added++;
 				}

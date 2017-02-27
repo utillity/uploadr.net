@@ -2,10 +2,12 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Xml.Serialization;
 using FlickrNet;
 
 namespace uTILLIty.UploadrNet.Windows.Models
 {
+	[XmlRoot("MediaItem")]
 	public class PhotoModel : NotifyPropertyChangedBase
 	{
 		private PhotoInfo _remoteDetails;
@@ -20,6 +22,7 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			}
 		}
 
+		[XmlIgnore]
 		public string Filename
 		{
 			get { return GetValue<string>(); }
@@ -104,7 +107,7 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			set { SetValue(value); }
 		}
 
-		public ObservableCollection<PhotosetModel> Sets { get; } = new ObservableCollection<PhotosetModel>();
+		public ObservableCollection<PhotosetModel> Sets { get; set; } = new ObservableCollection<PhotosetModel>();
 		public string Crc32 { get; set; }
 		public int RetryCount { get; set; }
 

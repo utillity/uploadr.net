@@ -18,7 +18,7 @@ namespace uTILLIty.UploadrNet.Windows
 
 		static ThrottledStream()
 		{
-			ThrottleTimer = new Timer {Interval = 1000};
+			ThrottleTimer = new Timer { Interval = 1000 };
 			ThrottleTimer.Elapsed += (o, e) =>
 			{
 				lock (SyncObject)

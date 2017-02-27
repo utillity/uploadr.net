@@ -127,22 +127,26 @@ namespace uTILLIty.UploadrNet.Windows
 				IsBusy = true;
 				while (true)
 				{
-					if (token.IsCancellationRequested)
-						return;
-
+					token.ThrowIfCancellationRequested();
 					var items = _processQueue.Where(ShouldProcess).ToArray();
-					if (!items.Any() || token.IsCancellationRequested)
+					if (!items.Any())
 						break;
 
 					Log($"Processing {items.Length} items from queue (with {MaxConcurrentOperations} worker-threads)...");
-					var result = Parallel.ForEach(items,
-						new ParallelOptions {MaxDegreeOfParallelism = MaxConcurrentOperations, CancellationToken = token},
-						ProcessItem);
 					await Task.Run(() =>
 					{
-						while (!result.IsCompleted)
+						try
 						{
-							Thread.Sleep(50);
+							var result = Parallel.ForEach(items,
+								new ParallelOptions {MaxDegreeOfParallelism = MaxConcurrentOperations, CancellationToken = token},
+								ProcessItem);
+							while (!result.IsCompleted)
+							{
+								Thread.Sleep(50);
+							}
+						}
+						catch (OperationCanceledException)
+						{
 						}
 					}, token).ConfigureAwait(false);
 				}
@@ -188,8 +192,7 @@ namespace uTILLIty.UploadrNet.Windows
 			var token = _cancellationToken;
 			try
 			{
-				if (token.IsCancellationRequested)
-					return;
+				token.ThrowIfCancellationRequested();
 				if (!ShouldProcess(item))
 					return;
 
@@ -210,8 +213,7 @@ namespace uTILLIty.UploadrNet.Windows
 					return;
 				}
 
-				if (token.IsCancellationRequested)
-					return;
+				token.ThrowIfCancellationRequested();
 
 				if (item.State == ProcessingStateType.ReadyToUpload)
 				{
@@ -219,8 +221,7 @@ namespace uTILLIty.UploadrNet.Windows
 						item.State = ProcessingStateType.Completed;
 					else
 					{
-						if (token.IsCancellationRequested)
-							return;
+						token.ThrowIfCancellationRequested();
 						item.State = ProcessingStateType.Uploading;
 						if (Upload(item))
 							item.State = ProcessingStateType.Uploaded;
@@ -244,6 +245,9 @@ namespace uTILLIty.UploadrNet.Windows
 					}
 					item.State = ProcessingStateType.Completed;
 				}
+			}
+			catch (OperationCanceledException)
+			{
 			}
 			catch (Exception ex)
 			{
@@ -426,6 +430,9 @@ namespace uTILLIty.UploadrNet.Windows
 					if (ex.Code == 3)
 						return;
 				}
+				catch (OperationCanceledException)
+				{
+				}
 				catch (Exception ex)
 				{
 					item.AddError($"Error adding photo to Set {set.Title}: {ex.Message}", ex);
@@ -480,6 +487,9 @@ namespace uTILLIty.UploadrNet.Windows
 					}
 				}
 			}
+			catch (OperationCanceledException)
+			{
+			}
 			catch (Exception ex)
 			{
 				throw new InvalidOperationException($"Error executing search-query. {ex.Message}", ex);
@@ -499,8 +509,8 @@ namespace uTILLIty.UploadrNet.Windows
 				{
 					f.PhotosSetMeta(l.PhotoId, l.Title, l.Description);
 					Log($"Updated title/description of {l.Filename} " +
-						$"from Title={r.Title} Description={r.Description} " +
-						$"to Title={l.Title} Description={l.Description}");
+					    $"from Title={r.Title} Description={r.Description} " +
+					    $"to Title={l.Title} Description={l.Description}");
 				}
 			}
 
@@ -516,7 +526,7 @@ namespace uTILLIty.UploadrNet.Windows
 				//	: l.Tags;
 				f.PhotosSetTags(l.PhotoId, l.Tags);
 				Log($"Updated tags of {l.Filename} " + $"from '{string.Join("','", r.Tags.Select(t => t.Raw))}' " +
-					$"to '{string.Join("','", l.Tags)}'");
+				    $"to '{string.Join("','", l.Tags)}'");
 			}
 
 			if (l.IsFamily != r.IsFamily || l.IsPublic != r.IsPublic || l.IsFriend != r.IsFriend)
@@ -524,15 +534,15 @@ namespace uTILLIty.UploadrNet.Windows
 				f.PhotosSetPerms(l.PhotoId, l.IsPublic, l.IsFriend, l.IsFamily, r.PermissionComment.GetValueOrDefault(),
 					r.PermissionAddMeta.GetValueOrDefault());
 				Log($"Updated rights/visibility of {l.Filename} " +
-					$"from IsPublic={r.IsPublic} IsFriend={r.IsFriend} IsFamily={r.IsFamily} " +
-					$"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}");
+				    $"from IsPublic={r.IsPublic} IsFriend={r.IsFriend} IsFamily={r.IsFamily} " +
+				    $"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}");
 			}
 			if (l.SafetyLevel != r.SafetyLevel)
 			{
 				f.PhotosSetSafetyLevel(l.PhotoId, l.SafetyLevel, l.SearchState);
 				Log($"Updated safety-level of {l.Filename} " +
-					$"from SafetyLevel.{r.SafetyLevel} (unknown SearchState) " +
-					$"to SafetyLevel.{l.SafetyLevel} SearchState.{l.SearchState}");
+				    $"from SafetyLevel.{r.SafetyLevel} (unknown SearchState) " +
+				    $"to SafetyLevel.{l.SafetyLevel} SearchState.{l.SearchState}");
 			}
 		}
 
@@ -556,6 +566,9 @@ namespace uTILLIty.UploadrNet.Windows
 					item.PhotoId = f.UploadPicture(stream, fname, item.Title, item.Description, tags, item.IsPublic, item.IsFamily,
 						item.IsFriend, item.ContentType, item.SafetyLevel, item.SearchState);
 					Log($"{item.Filename} uploaded (remote ID={item.PhotoId})");
+				}
+				catch (OperationCanceledException)
+				{
 				}
 				catch (Exception ex)
 				{
