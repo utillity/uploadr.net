@@ -35,6 +35,12 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			set { SetValue(value); }
 		}
 
+		public bool HasDateTakenExifProp
+		{
+			get { return GetValue<bool>(); }
+			set { SetValue(value); }
+		}
+
 		public string[] Tags
 		{
 			get { return GetValue<string[]>(); }
@@ -74,7 +80,11 @@ namespace uTILLIty.UploadrNet.Windows.Models
 		public ProcessingStateType State
 		{
 			get { return GetValue<ProcessingStateType>(); }
-			set { SetValue(value); }
+			set
+			{
+				if (SetValue(value) && LogStateChange)
+					AddMessage($"Changed to state {value}");
+			}
 		}
 
 		public ContentType ContentType
@@ -95,7 +105,7 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			set { SetValue(value); }
 		}
 
-		public string Errors
+		public string Log
 		{
 			get { return GetValue<string>(); }
 			set { SetValue(value); }
@@ -107,21 +117,35 @@ namespace uTILLIty.UploadrNet.Windows.Models
 			set { SetValue(value); }
 		}
 
+		[XmlIgnore]
+		public bool LogStateChange { get; set; }
+
+		public string Crc32
+		{
+			get { return GetValue<string>(); }
+			set { SetValue(value); }
+		}
+
+		[XmlIgnore]
+		public int RetryCount
+		{
+			get { return GetValue<int>(); }
+			set { SetValue(value); }
+		}
+
 		public ObservableCollection<PhotosetModel> Sets { get; set; } = new ObservableCollection<PhotosetModel>();
-		public string Crc32 { get; set; }
-		public int RetryCount { get; set; }
 
 		public void AddError(string msg, Exception ex)
 		{
 			Debug.WriteLine(ex.ToString());
-			AddMessage(msg + "\r\n" + ex);
+			AddMessage("ERROR: " + msg + "\r\n" + ex);
 			State = ProcessingStateType.Retry;
 			RetryCount++;
 		}
 
 		public void AddMessage(string msg)
 		{
-			Errors = $"{DateTime.Now:T} {msg}\r\n{Errors}";
+			Log = $"{DateTime.Now:T} {msg}\r\n{Log}";
 		}
 
 		public PhotoInfo GetRemoteDetails(Flickr f)

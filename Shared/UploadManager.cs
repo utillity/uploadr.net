@@ -53,6 +53,12 @@ namespace uTILLIty.UploadrNet.Windows
 			set { SetValue(value); }
 		}
 
+		public int MaxTries
+		{
+			get { return GetValue(5); }
+			set { SetValue(value); }
+		}
+
 		public bool IsBusy
 		{
 			get { return GetValue<bool>(); }
@@ -103,10 +109,11 @@ namespace uTILLIty.UploadrNet.Windows
 			_processQueue.AddRange(list);
 		}
 
-		private void Log(string msg)
+		private void Log(string msg, PhotoModel item = null)
 		{
 			Debug.WriteLine(msg);
 			LogAction?.Invoke(msg);
+			item?.AddMessage(msg);
 		}
 
 		public async Task ProcessAsync()
@@ -163,7 +170,7 @@ namespace uTILLIty.UploadrNet.Windows
 			switch (item.State)
 			{
 				case ProcessingStateType.Retry:
-					if (item.RetryCount <= 3)
+					if (item.RetryCount <= MaxTries)
 					{
 						item.State = ProcessingStateType.Pending;
 						item.AddMessage("Retrying");
@@ -197,6 +204,7 @@ namespace uTILLIty.UploadrNet.Windows
 					return;
 
 				Debug.WriteLine($"Processing {item.Filename} ({item.State})...");
+				item.LogStateChange = true;
 				EnsureItemProperties(item);
 
 				if (item.State == ProcessingStateType.Pending)
@@ -231,7 +239,7 @@ namespace uTILLIty.UploadrNet.Windows
 				if (item.State == ProcessingStateType.Uploaded)
 				{
 					AddToSets(item);
-					FixDateTakenIfVideo(item);
+					FixDateTakenIfNotInExif(item);
 					item.State = ProcessingStateType.Completed;
 				}
 
@@ -241,7 +249,7 @@ namespace uTILLIty.UploadrNet.Windows
 					{
 						UpdateItem(item);
 						AddToSets(item);
-						FixDateTakenIfVideo(item);
+						FixDateTakenIfNotInExif(item);
 					}
 					item.State = ProcessingStateType.Completed;
 				}
@@ -255,13 +263,13 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 			finally
 			{
+				item.LogStateChange = false;
 				Debug.WriteLine($"Completed {item.Filename} in state ({item.State})");
 				switch (item.State)
 				{
 					case ProcessingStateType.Failed:
 					case ProcessingStateType.Retry:
 						Log($"{item.Filename} completed in state {item.State}");
-						Log($"{item.Filename} Errors:\r\n{item.Errors}");
 						break;
 					//case ProcessingStateType.Duplicate:
 					//case ProcessingStateType.Completed:
@@ -333,9 +341,9 @@ namespace uTILLIty.UploadrNet.Windows
 			return expr;
 		}
 
-		private void FixDateTakenIfVideo(PhotoModel item)
+		private void FixDateTakenIfNotInExif(PhotoModel item)
 		{
-			if (!IsVideo(item.LocalPath) || !item.DateTaken.HasValue)
+			if (item.HasDateTakenExifProp || !item.DateTaken.HasValue)
 				return;
 
 			var f = _mgr.Surrogate;
@@ -344,25 +352,52 @@ namespace uTILLIty.UploadrNet.Windows
 			var rdt = r.DateTakenUnknown ? DateTime.MinValue : r.DateTaken.Date.ToUniversalTime();
 			if (!dt.ToUniversalTime().Date.Equals(rdt))
 			{
-				f.PhotosSetDates(item.PhotoId, dt, DateGranularity.FullDate);
-				Log($"Updated Date-Taken (to {dt:d}) for video {item.Filename}");
+				//https://www.flickr.com/services/api/flickr.photos.setDates.html
+				try
+				{
+					f.PhotosSetDates(item.PhotoId, dt, DateGranularity.FullDate);
+					Log($"Updated Date-Taken (to {dt:d}) for {item.Filename}", item);
+				}
+				catch (FlickrApiException ex)
+				{
+					switch (ex.Code)
+					{
+						case 6: //Invalid Date Taken. The date taken passed is invalid. It may be in the future or way in the past. 
+							Log($"Unable to set Date-Taken (to {dt:d}) for {item.Filename}. {ex.Message}", item);
+							return;
+					}
+					throw;
+				}
 			}
 		}
 
-		private void SetDateTaken(PhotoModel item)
+		public static void SetDateTaken(PhotoModel item)
 		{
 			var path = item.LocalPath;
-			item.DateTaken = IsVideo(path) ? GetDateModified(path) : GetDateTaken(path);
+			try
+			{
+				item.DateTaken = GetDateTaken(path);
+				item.HasDateTakenExifProp = true;
+			}
+			catch (ArgumentException) //Property cannot be found.
+			{
+				//Log($"Date-Taken EXIF Property (36867) for '{path}' could not be found. Using Date-Modified instead");
+				item.DateTaken = GetDateModified(path);
+				item.HasDateTakenExifProp = false;
+			}
+			if (!item.HasDateTakenExifProp)
+				item.AddMessage("Using date-modified of file as date-taken");
+			//Log($"Date-Taken EXIF Property (36867) for '{path}' could not be found. Using Date-Modified instead");
 		}
 
-		private bool IsVideo(string path)
-		{
-			// ReSharper disable once PossibleNullReferenceException
-			var ext = Path.GetExtension(path).ToLowerInvariant().Substring(1);
-			return VideoFormats.Contains(ext);
-		}
+		//private bool IsVideo(string path)
+		//{
+		//	// ReSharper disable once PossibleNullReferenceException
+		//	var ext = Path.GetExtension(path).ToLowerInvariant().Substring(1);
+		//	return VideoFormats.Contains(ext);
+		//}
 
-		private DateTime GetDateModified(string path)
+		public static DateTime GetDateModified(string path)
 		{
 			var fi = new FileInfo(path);
 			if (!fi.Exists)
@@ -370,27 +405,20 @@ namespace uTILLIty.UploadrNet.Windows
 			return fi.LastWriteTime;
 		}
 
-		private DateTime GetDateTaken(string path)
+		/// <exception cref="ArgumentException">Thrown, if EXIF property was not found (&quot;Property cannot be found.&quot;)</exception>
+		public static DateTime GetDateTaken(string path)
 		{
 			if (!File.Exists(path))
 				throw new FileNotFoundException($"File {path} was not found. Cannot retrieve date-modified");
 
-			try
+			using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
 			{
-				using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
+				using (var myImage = Image.FromStream(fs, false, false))
 				{
-					using (var myImage = Image.FromStream(fs, false, false))
-					{
-						var propItem = myImage.GetPropertyItem(36867);
-						var dateTaken = ColonRegex.Replace(Encoding.UTF8.GetString(propItem.Value), "-", 2);
-						return DateTime.Parse(dateTaken);
-					}
+					var propItem = myImage.GetPropertyItem(36867);
+					var dateTaken = ColonRegex.Replace(Encoding.UTF8.GetString(propItem.Value), "-", 2);
+					return DateTime.Parse(dateTaken);
 				}
-			}
-			catch (ArgumentException) //Property cannot be found.
-			{
-				Log($"Date-Taken EXIF Property (36867) for '{path}' could not be found. Using Date-Modified instead");
-				return GetDateModified(path);
 			}
 		}
 
@@ -422,7 +450,7 @@ namespace uTILLIty.UploadrNet.Windows
 					{
 						f.PhotosetsAddPhoto(set.Id, item.PhotoId);
 					}
-					Log($"Added {item.Filename} to Set '{set.Title}'");
+					Log($"Added {item.Filename} to Set '{set.Title}'", item);
 				}
 				catch (FlickrApiException ex)
 				{
@@ -480,8 +508,15 @@ namespace uTILLIty.UploadrNet.Windows
 				{
 					var r = dupItem;
 					var rCrcTag = r.Tags.FirstOrDefault(t => t.StartsWith(CrcMachineTag));
-					if (rCrcTag == null || crcTag.Replace("\"", "").Equals(rCrcTag, StringComparison.InvariantCultureIgnoreCase))
+					if (rCrcTag != null && crcTag.Replace("\"", "").Equals(rCrcTag, StringComparison.InvariantCultureIgnoreCase))
 					{
+						item.AddMessage("Duplicate matched by CRC");
+						item.PhotoId = dupItem.PhotoId;
+						return true;
+					}
+					if (rCrcTag == null && dupItem.Title.Equals(item.Title, StringComparison.InvariantCultureIgnoreCase))
+					{
+						item.AddMessage("Duplicate matched by Title");
 						item.PhotoId = dupItem.PhotoId;
 						return true;
 					}
@@ -510,7 +545,7 @@ namespace uTILLIty.UploadrNet.Windows
 					f.PhotosSetMeta(l.PhotoId, l.Title, l.Description);
 					Log($"Updated title/description of {l.Filename} " +
 					    $"from Title={r.Title} Description={r.Description} " +
-					    $"to Title={l.Title} Description={l.Description}");
+					    $"to Title={l.Title} Description={l.Description}", item);
 				}
 			}
 
@@ -526,7 +561,7 @@ namespace uTILLIty.UploadrNet.Windows
 				//	: l.Tags;
 				f.PhotosSetTags(l.PhotoId, l.Tags);
 				Log($"Updated tags of {l.Filename} " + $"from '{string.Join("','", r.Tags.Select(t => t.Raw))}' " +
-				    $"to '{string.Join("','", l.Tags)}'");
+				    $"to '{string.Join("','", l.Tags.Select(t => t.Replace("\"", "")))}'", item);
 			}
 
 			if (l.IsFamily != r.IsFamily || l.IsPublic != r.IsPublic || l.IsFriend != r.IsFriend)
@@ -535,14 +570,14 @@ namespace uTILLIty.UploadrNet.Windows
 					r.PermissionAddMeta.GetValueOrDefault());
 				Log($"Updated rights/visibility of {l.Filename} " +
 				    $"from IsPublic={r.IsPublic} IsFriend={r.IsFriend} IsFamily={r.IsFamily} " +
-				    $"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}");
+				    $"to IsPublic={l.IsPublic} IsFriend={l.IsFriend} IsFamily={l.IsFamily}", item);
 			}
 			if (l.SafetyLevel != r.SafetyLevel)
 			{
 				f.PhotosSetSafetyLevel(l.PhotoId, l.SafetyLevel, l.SearchState);
 				Log($"Updated safety-level of {l.Filename} " +
 				    $"from SafetyLevel.{r.SafetyLevel} (unknown SearchState) " +
-				    $"to SafetyLevel.{l.SafetyLevel} SearchState.{l.SearchState}");
+				    $"to SafetyLevel.{l.SafetyLevel} SearchState.{l.SearchState}", item);
 			}
 		}
 
@@ -563,12 +598,25 @@ namespace uTILLIty.UploadrNet.Windows
 				{
 					var tags = item.Tags == null ? null : "\"" + string.Join("\",\"", item.Tags) + "\"";
 					var f = _mgr.Surrogate;
+					//https://www.flickr.com/services/api/upload.api.html
 					item.PhotoId = f.UploadPicture(stream, fname, item.Title, item.Description, tags, item.IsPublic, item.IsFamily,
 						item.IsFriend, item.ContentType, item.SafetyLevel, item.SearchState);
 					Log($"{item.Filename} uploaded (remote ID={item.PhotoId})");
 				}
 				catch (OperationCanceledException)
 				{
+				}
+				catch (FlickrApiException ex)
+				{
+					//Filetype was not recognised (5)
+					if (ex.Code == 5)
+					{
+						item.AddError($"File not recognized by Flickr (file corrupt?): {ex.Message}", ex);
+						item.State = ProcessingStateType.Failed;
+						return false;
+					}
+					item.AddError($"Error uploading photo: {ex.Message}", ex);
+					return false;
 				}
 				catch (Exception ex)
 				{

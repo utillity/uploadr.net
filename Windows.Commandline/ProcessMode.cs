@@ -86,14 +86,14 @@ namespace uTILLIty.UploadrNet.Windows
 			)]
 		public FileInfo QueueFile { get; set; }
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "types", Optional = true, AllowMultiple = true,
 			Description = "The file-types to process. Use 'videos' and 'photos', or individual extension (ie 'png jpg jpeg')")]
 		public string[] FileTypes { get; set; }
 
 		[FileArgument('k', "key", Optional = false, FileMustExist = true)]
 		public override FileInfo KeyFile { get; set; }
 
-		[ValueArgument(typeof(string), 'a', "album", AllowMultiple = true,
+		[ValueArgument(typeof (string), 'a', "album", AllowMultiple = true,
 			Description = "Use either the album-name, or ID:<albumId>. AlbumID can be retrieved using LIST mode.")]
 		public string[] AddToSets { get; set; }
 
@@ -113,16 +113,16 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument(Argument.UnsetShortNameChar, "updatedups", false)]
 		public bool UpdateDuplicates { get; set; }
 
-		[ValueArgument(typeof(ContentType), Argument.UnsetShortNameChar, "ctype")]
+		[ValueArgument(typeof (ContentType), Argument.UnsetShortNameChar, "ctype")]
 		public ContentType ContentType { get; set; }
 
-		[ValueArgument(typeof(decimal), Argument.UnsetShortNameChar, "mbpersec")]
+		[ValueArgument(typeof (decimal), Argument.UnsetShortNameChar, "mbpersec")]
 		public decimal MaxBandwidthMb { get; set; }
 
-		[ValueArgument(typeof(byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte)20)]
+		[ValueArgument(typeof (byte), Argument.UnsetShortNameChar, "parallelism", DefaultValue = (byte) 20)]
 		public byte MaxConcurrentOperations { get; set; } = 20;
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "desc")]
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "desc")]
 		public string Description { get; set; }
 
 		[SwitchArgument(Argument.UnsetShortNameChar, "family", false)]
@@ -134,23 +134,23 @@ namespace uTILLIty.UploadrNet.Windows
 		[SwitchArgument(Argument.UnsetShortNameChar, "public", false)]
 		public bool IsPublic { get; set; }
 
-		[ValueArgument(typeof(SafetyLevel), Argument.UnsetShortNameChar, "safety")]
+		[ValueArgument(typeof (SafetyLevel), Argument.UnsetShortNameChar, "safety")]
 		public SafetyLevel SafetyLevel { get; set; }
 
-		[ValueArgument(typeof(HiddenFromSearch), Argument.UnsetShortNameChar, "search")]
+		[ValueArgument(typeof (HiddenFromSearch), Argument.UnsetShortNameChar, "search")]
 		public HiddenFromSearch SearchState { get; set; }
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "tags")]
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "tags")]
 		public string Tags { get; set; }
 
-		[ValueArgument(typeof(string), Argument.UnsetShortNameChar, "title",
+		[ValueArgument(typeof (string), Argument.UnsetShortNameChar, "title",
 			DefaultValue = "{fname}")]
 		public string Title { get; set; }
 
 		public override string GetAdditionalUsageHints()
 		{
 			RootDirectory = new DirectoryInfo(@"c:\Images");
-			var pi = new PhotoModel { LocalPath = @"c:\Images\2001\Vacation\image1.jpg" };
+			var pi = new PhotoModel {LocalPath = @"c:\Images\2001\Vacation\image1.jpg"};
 			var sb = new StringBuilder(500);
 			sb.AppendLine("The following expressions can be used within --title, --desc, and --tags:");
 			sb.AppendLine($"Example with a --source of '{RootDirectory.FullName}' and an image located in '{pi.LocalPath}':");
@@ -205,7 +205,6 @@ namespace uTILLIty.UploadrNet.Windows
 				LogAction = msg => Console.WriteLine($"{DateTime.Now:HH:mm:ss} {msg}")
 			};
 			var list = TryLoadQueue() ?? new List<PhotoModel>(1000);
-			//var di = new DirectoryInfo(cmdLine.RootDirectory);
 			var di = RootDirectory;
 			if (!list.Any())
 			{
@@ -358,7 +357,8 @@ namespace uTILLIty.UploadrNet.Windows
 			}
 			else
 			{
-				ThrottledStream.MaxBytesPerSecond = (int)(mbit * 1024m * 1024m / 8m);
+				//take 95% of value to account for API overhead
+				ThrottledStream.MaxBytesPerSecond = (int) (mbit*1024m*1024m/8m*0.95m);
 				Console.WriteLine($"Processing at {mbit:N1}mbit ({ThrottledStream.MaxBytesPerSecond:N} bytes/sec.)");
 			}
 			_lastMaxBandwidth = mbit;
@@ -460,7 +460,7 @@ namespace uTILLIty.UploadrNet.Windows
 				var ext = f.Extension.ToLowerInvariant().Substring(1); //remove .
 				if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
 				{
-					var item = new PhotoModel { LocalPath = f.FullName };
+					var item = new PhotoModel {LocalPath = f.FullName};
 					list.Add(item);
 					added++;
 				}
