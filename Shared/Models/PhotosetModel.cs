@@ -13,6 +13,8 @@
 			Id = id;
 		}
 
+		public string Key => Id ?? Title;
+
 		public string Id
 		{
 			get { return GetValue<string>(); }

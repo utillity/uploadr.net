@@ -26,5 +26,26 @@ namespace uTILLIty.UploadrNet.Windows
 			Assert.AreEqual(13, dlm.Hour);
 			Assert.AreEqual(57, dlm.Minute);
 		}
+
+		//[TestMethod, TestCategory("Temp")]
+		//public void Temp()
+		//{
+		//	var f = new FlickrManager();
+		//	var keyFile = new FileInfo(@"C:\Users\Tilli\Desktop\auth.xml");
+		//	using (var stream = keyFile.OpenRead())
+		//	{
+		//		var token = stream.Load<AccessToken>();
+		//		f.ApplyToken(token);
+		//	}
+		//	var sets = f.Surrogate.PhotosetsGetList(f.AccountDetails.UserId);
+		//	foreach (var set in sets)
+		//	{
+		//		if (set.Title == "2016" && set.NumberOfPhotos == 1)
+		//		{
+		//			TestContext.WriteLine($"Deleting set {set.Description}");
+		//			f.Surrogate.PhotosetsDelete(set.PhotosetId);
+		//		}
+		//	}
+		//}
 	}
 }

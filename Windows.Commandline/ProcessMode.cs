@@ -18,6 +18,8 @@ namespace uTILLIty.UploadrNet.Windows
 	{
 		private static readonly Regex ExpressionRegex = new Regex(@"(?in)(?<exp>\{(?<name>[^}]+)\})");
 		private readonly Dictionary<string, ExpandItem> _expandItems;
+
+		private readonly object _queueFileLock = new object();
 		private decimal _lastMaxBandwidth;
 
 		private DateTime _qLastSaved;
@@ -320,12 +322,32 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			if (!QueueFile.Exists)
 				return null;
-			using (var stream = QueueFile.OpenRead())
+			lock (_queueFileLock)
 			{
-				Console.WriteLine("*** Loading Queue...");
-				var list = stream.Load<List<PhotoModel>>(null);
-				Console.WriteLine($"*** Loaded {list.Count} items into Queue ***");
-				return list;
+				using (var stream = QueueFile.OpenRead())
+				{
+					Console.WriteLine("*** Loading Queue...");
+					var list = stream.Load<List<PhotoModel>>(null);
+					var knownSets = new Dictionary<string, PhotosetModel>();
+					foreach (var i in list)
+					{
+						var sets = i.Sets.ToArray();
+						foreach (var s in sets)
+						{
+							if (!knownSets.ContainsKey(s.Key))
+							{
+								knownSets.Add(s.Key, s);
+							}
+							else
+							{
+								i.Sets.Remove(s);
+								i.Sets.Add(knownSets[s.Key]);
+							}
+						}
+					}
+					Console.WriteLine($"*** Loaded {list.Count} items into Queue ***");
+					return list;
+				}
 			}
 		}
 
@@ -333,12 +355,21 @@ namespace uTILLIty.UploadrNet.Windows
 		{
 			if (QueueFile == null)
 				return;
-			using (var stream = QueueFile.OpenWrite())
+			lock (_queueFileLock)
 			{
-				Console.WriteLine("*** Saving Queue...");
-				list.ToXml(stream, Encoding.Default, null);
-				_qLastSaved = DateTime.Now;
-				Console.WriteLine("*** Queue saved ***");
+				var tmpFile = new FileInfo(QueueFile.FullName + ".tmp");
+				using (var stream = tmpFile.OpenWrite())
+				{
+					Console.WriteLine("*** Saving Queue...");
+					list.ToXml(stream, Encoding.Default, null);
+					_qLastSaved = DateTime.Now;
+					QueueFile.Refresh();
+					if (QueueFile.Exists)
+						QueueFile.Delete();
+					tmpFile.MoveTo(QueueFile.FullName);
+					QueueFile.Refresh();
+					Console.WriteLine("*** Queue saved ***");
+				}
 			}
 		}
 

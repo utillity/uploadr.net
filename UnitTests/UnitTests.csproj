@@ -35,7 +35,12 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="FlickrNet, Version=3.24.0.0, Culture=neutral, PublicKeyToken=2491df59efa5d132, processorArchitecture=MSIL">
+      <HintPath>..\packages\FlickrNet.3.24.0\lib\net20\FlickrNet.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
+    <Reference Include="System.XML" />
   </ItemGroup>
   <Choose>
     <When Condition="('$(VisualStudioVersion)' == '10.0' or '$(VisualStudioVersion)' == '') and '$(TargetFrameworkVersion)' == 'v3.5'">
@@ -63,6 +68,9 @@
       <Project>{0a28570e-26fe-4a9a-8fa7-1e27c2cb3db7}</Project>
       <Name>Windows.Commandline</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Choose>
     <When Condition="'$(VisualStudioVersion)' == '10.0' And '$(IsCodedUITest)' == 'True'">
