@@ -206,13 +206,10 @@ namespace uTILLIty.UploadrNet.Windows
 				CheckForDuplicates = CheckForDuplicates,
 				LogAction = msg => Console.WriteLine($"{DateTime.Now:HH:mm:ss} {msg}")
 			};
-			var list = TryLoadQueue() ?? new List<PhotoModel>(1000);
+			var list = TryLoadQueue() ?? new HashSet<PhotoModel>();
 			var di = RootDirectory;
-			if (!list.Any())
-			{
-				FillPhotosFromPath(di, list, (di.Parent?.FullName.Length ?? -1) + 1);
-				SetFromCommandline(mgr, list);
-			}
+			FillPhotosFromPath(di, list, (di.Parent?.FullName.Length ?? -1) + 1);
+			SetFromCommandline(mgr, list);
 			Console.WriteLine($"Starting to process {list.Count} files...");
 			PrintHelp();
 			//Console.ReadLine();
@@ -318,7 +315,7 @@ namespace uTILLIty.UploadrNet.Windows
 			Console.WriteLine("  -    = -0.5mbit speedlimit");
 		}
 
-		private List<PhotoModel> TryLoadQueue()
+		private HashSet<PhotoModel> TryLoadQueue()
 		{
 			if (!QueueFile.Exists)
 				return null;
@@ -327,10 +324,29 @@ namespace uTILLIty.UploadrNet.Windows
 				using (var stream = QueueFile.OpenRead())
 				{
 					Console.WriteLine("*** Loading Queue...");
-					var list = stream.Load<List<PhotoModel>>(null);
+					var list = stream.Load<HashSet<PhotoModel>>(null);
 					var knownSets = new Dictionary<string, PhotosetModel>();
 					foreach (var i in list)
 					{
+						switch (i.State)
+						{
+							case ProcessingStateType.Failed:
+								//TODO: check, if we should retry failed
+								//i.State = ProcessingStateType.Pending;
+								break;
+							case ProcessingStateType.Uploading:
+								//not sure if uploaded! restart
+								i.State = ProcessingStateType.Pending;
+								break;
+							//case ProcessingStateType.Pending:
+							//case ProcessingStateType.Duplicate:
+							//case ProcessingStateType.ReadyToUpload:
+							//case ProcessingStateType.Uploaded:
+							//case ProcessingStateType.Retry:
+							//case ProcessingStateType.Completed:
+							//default:
+							//	break;
+						}
 						var sets = i.Sets.ToArray();
 						foreach (var s in sets)
 						{
@@ -346,12 +362,17 @@ namespace uTILLIty.UploadrNet.Windows
 						}
 					}
 					Console.WriteLine($"*** Loaded {list.Count} items into Queue ***");
+					foreach (var g in list.GroupBy(i => i.State))
+					{
+						var spaces = 15 - g.Key.ToString().Length;
+						Console.WriteLine($"    {g.Key}:{new string(' ', spaces)}{g.Count()}");
+					}
 					return list;
 				}
 			}
 		}
 
-		private void SaveQueue(List<PhotoModel> list)
+		private void SaveQueue(HashSet<PhotoModel> list)
 		{
 			if (QueueFile == null)
 				return;
@@ -395,7 +416,7 @@ namespace uTILLIty.UploadrNet.Windows
 			_lastMaxBandwidth = mbit;
 		}
 
-		private void SetFromCommandline(FlickrManager mgr, List<PhotoModel> list)
+		private void SetFromCommandline(FlickrManager mgr, HashSet<PhotoModel> list)
 		{
 			var f = mgr.Surrogate;
 			var sets = f.PhotosetsGetList(mgr.AccountDetails.UserId);
@@ -417,6 +438,12 @@ namespace uTILLIty.UploadrNet.Windows
 				item.IsFriend = IsFriend;
 				item.IsPublic = IsPublic;
 
+				foreach (var s in item.Sets)
+				{
+					if (!knownSets.Contains(s))
+						knownSets.Add(s);
+				}
+
 				foreach (var setNameExpression in AddToSets)
 				{
 					var setName = Expand(setNameExpression, item);
@@ -427,10 +454,9 @@ namespace uTILLIty.UploadrNet.Windows
 						key = key.Substring(3);
 					}
 					PhotosetModel set;
-					var candidates = knownSets.Where(s =>
-						(keyIsId && s.Id.ToLowerInvariant() == key)
-						|| (!keyIsId && s.Title.ToLowerInvariant() == key))
-						.ToArray();
+					var candidates =
+						knownSets.Where(
+							s => (keyIsId && s.Id.ToLowerInvariant() == key) || (!keyIsId && s.Title.ToLowerInvariant() == key)).ToArray();
 					if (candidates.Length > 1)
 					{
 						var albums = string.Join(", ", sets.Select(s => $"'{s.Title}' (ID:{s.PhotosetId})"));
@@ -461,7 +487,8 @@ namespace uTILLIty.UploadrNet.Windows
 					{
 						set = candidates.Single();
 					}
-					item.Sets.Add(set);
+					if (!item.Sets.Contains(set))
+						item.Sets.Add(set);
 				}
 			}
 		}
@@ -481,7 +508,7 @@ namespace uTILLIty.UploadrNet.Windows
 			return expanded;
 		}
 
-		private void FillPhotosFromPath(DirectoryInfo di, List<PhotoModel> list, int prefixLen)
+		private void FillPhotosFromPath(DirectoryInfo di, HashSet<PhotoModel> list, int prefixLen)
 		{
 			Console.Write($"Scanning {di.FullName.Substring(prefixLen)}... ");
 			var files = di.GetFiles();
@@ -492,8 +519,11 @@ namespace uTILLIty.UploadrNet.Windows
 				if (FileTypes.Any(t => t.Equals(ext, StringComparison.InvariantCultureIgnoreCase)))
 				{
 					var item = new PhotoModel {LocalPath = f.FullName};
-					list.Add(item);
-					added++;
+					if (!list.Contains(item))
+					{
+						list.Add(item);
+						added++;
+					}
 				}
 			}
 			Console.WriteLine($"{added} files queued");

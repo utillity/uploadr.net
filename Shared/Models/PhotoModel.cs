@@ -152,5 +152,38 @@ namespace uTILLIty.UploadrNet.Windows.Models
 		{
 			return _remoteDetails ?? (_remoteDetails = f.PhotosGetInfo(PhotoId));
 		}
+
+		public override string ToString()
+		{
+			return $"{State}: {LocalPath}";
+		}
+
+		protected bool Equals(PhotoModel other)
+		{
+			return string.Equals(LocalPath, other.LocalPath);
+		}
+
+		public override bool Equals(object obj)
+		{
+			if (ReferenceEquals(null, obj)) return false;
+			if (ReferenceEquals(this, obj)) return true;
+			if (obj.GetType() != GetType()) return false;
+			return Equals((PhotoModel) obj);
+		}
+
+		public override int GetHashCode()
+		{
+			return LocalPath?.ToLowerInvariant().GetHashCode() ?? 0;
+		}
+
+		public static bool operator ==(PhotoModel left, PhotoModel right)
+		{
+			return Equals(left, right);
+		}
+
+		public static bool operator !=(PhotoModel left, PhotoModel right)
+		{
+			return !Equals(left, right);
+		}
 	}
 }

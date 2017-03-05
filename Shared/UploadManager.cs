@@ -102,7 +102,7 @@ namespace uTILLIty.UploadrNet.Windows
 			_processQueue.Add(item);
 		}
 
-		public void AddRange(List<PhotoModel> list)
+		public void AddRange(IEnumerable<PhotoModel> list)
 		{
 			if (IsBusy)
 				throw new InvalidOperationException("Cannot add items to queue while Upload-Manager is processing the queue");
