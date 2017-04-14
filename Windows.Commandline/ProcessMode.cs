@@ -367,6 +367,7 @@ namespace uTILLIty.UploadrNet.Windows
 						var spaces = 15 - g.Key.ToString().Length;
 						Console.WriteLine($"    {g.Key}:{new string(' ', spaces)}{g.Count()}");
 					}
+					stream.Close();
 					return list;
 				}
 			}
@@ -384,13 +385,13 @@ namespace uTILLIty.UploadrNet.Windows
 					Console.WriteLine("*** Saving Queue...");
 					list.ToXml(stream, Encoding.Default, null);
 					_qLastSaved = DateTime.Now;
-					QueueFile.Refresh();
-					if (QueueFile.Exists)
-						QueueFile.Delete();
-					tmpFile.MoveTo(QueueFile.FullName);
-					QueueFile.Refresh();
-					Console.WriteLine("*** Queue saved ***");
 				}
+				QueueFile.Refresh();
+				if (QueueFile.Exists)
+					QueueFile.Delete();
+				tmpFile.MoveTo(QueueFile.FullName);
+				QueueFile.Refresh();
+				Console.WriteLine("*** Queue saved ***");
 			}
 		}
 
